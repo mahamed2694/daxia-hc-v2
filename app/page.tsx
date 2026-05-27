@@ -50,18 +50,17 @@ export default function Home() {
   const [formPessoa, setFormPessoa] = useState({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
   const [formCargo, setFormCargo] = useState({ nome: '', he60: '', he100: '' });
   const [formLançamento, setFormLançamento] = useState({ 
-  pessoaId: 1, 
-  tipo: 'he-60', 
-  data: '', 
-  horas: 0, 
-  minutos: 0, 
-  descricao: '',
-  avisoComunicado: true
-});
+    pessoaId: 1, 
+    tipo: 'he-60', 
+    data: '', 
+    horas: 0, 
+    minutos: 0, 
+    descricao: '',
+    avisoComunicado: true
+  });
 
   const cargosArray = Object.keys(tabelaHE);
 
-  // Registrar auditoria com dados do usuário
   const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
     try {
       await supabase.from('auditoria').insert([{
@@ -72,7 +71,6 @@ export default function Home() {
         dados_anteriores: detalhes
       }]);
       
-      // Recarregar auditoria
       const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
       if (auditData) setAuditoria(auditData);
     } catch (error) {
@@ -80,12 +78,10 @@ export default function Home() {
     }
   };
 
-  // Desclassificar automaticamente no bonus
   const desclassificarBonus = async (pessoaId, motivo) => {
     try {
       const hoje = new Date().toISOString().split('T')[0];
       
-      // Verificar se já existe registro
       const { data: existing } = await supabase
         .from('bonus_elegibilidade')
         .select('*')
@@ -93,7 +89,6 @@ export default function Home() {
         .single();
       
       if (existing) {
-        // Atualizar
         await supabase
           .from('bonus_elegibilidade')
           .update({
@@ -103,7 +98,6 @@ export default function Home() {
           })
           .eq('pessoa_id', pessoaId);
       } else {
-        // Criar novo
         await supabase
           .from('bonus_elegibilidade')
           .insert([{
@@ -114,7 +108,6 @@ export default function Home() {
           }]);
       }
       
-      // Recarregar bonus
       const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
       if (bonusData) setBonusElegibilidade(bonusData);
     } catch (error) {
@@ -122,7 +115,6 @@ export default function Home() {
     }
   };
 
-  // Inicializar elegibilidade para pessoa nova
   const inicializarBonusPessoa = async (pessoaId) => {
     try {
       const { data: existing } = await supabase
@@ -237,7 +229,6 @@ export default function Home() {
     return diasUteis;
   };
 
-  // Gráfico HE - LINHA
   const dadosGraficoHELinha = useMemo(() => {
     const dados = {};
     lançamentosFiltrados.filter(l => l.tipo.includes('he')).forEach(l => {
@@ -256,7 +247,6 @@ export default function Home() {
       }));
   }, [lançamentosFiltrados, pessoas, tabelaHE]);
 
-  // Gráfico Absenteísmo - ÁREA
   const dadosGraficoAbsArea = useMemo(() => {
     const dados = {};
     lançamentosFiltrados.forEach(l => {
@@ -473,15 +463,14 @@ export default function Home() {
       if (error) throw error;
       registrarAuditoria('lancamentos', 'INSERT', data[0]);
       
-      // Desclassificar automaticamente se necessário
       const pessoaId = parseInt(formLançamento.pessoaId);
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
       } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10 && !formLançamento.avisoComunicado) {
-  await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
-}
+        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+      }
       
-      setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '' });
+      setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '', avisoComunicado: true });
       
       setTimeout(async () => {
         const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
@@ -515,7 +504,6 @@ export default function Home() {
     }
   };
 
-  // Funções de Bonus
   const handleToggleBonusElegibilidade = async (pessoaId, elegivel) => {
     try {
       const { data: existing } = await supabase
@@ -840,7 +828,7 @@ export default function Home() {
           <div>
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">📝 Registrar Lançamento</h2>
-              <form onSubmit={handleAdicionarLançamento} className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <form onSubmit={handleAdicionarLançamento} className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <select value={formLançamento.pessoaId} onChange={(e) => setFormLançamento({ ...formLançamento, pessoaId: parseInt(e.target.value) })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500">
                   {pessoas.map(p => (<option key={p.id} value={p.id}>{p.nome} ({p.setor})</option>))}
                 </select>
@@ -854,14 +842,6 @@ export default function Home() {
                   <option value="saida-antecipada">🚪 Saída Antecipada</option>
                 </select>
                 <input type="date" value={formLançamento.data} onChange={(e) => setFormLançamento({ ...formLançamento, data: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
-                {formLançamento.tipo === 'atraso' && (
-  <div className="border-2 border-gray-300 rounded-lg px-4 py-3">
-    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-      <input type="checkbox" checked={formLançamento.avisoComunicado} onChange={(e) => setFormLançamento({ ...formLançamento, avisoComunicado: e.target.checked })} />
-      Aviso comunicado?
-    </label>
-  </div>
-)}
                 {['he-60', 'he-100', 'atestado-horas', 'saida-antecipada'].includes(formLançamento.tipo) ? (
                   <input type="number" step="0.5" min="0" placeholder="Horas" value={formLançamento.horas} onChange={(e) => setFormLançamento({ ...formLançamento, horas: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
                 ) : (
@@ -869,6 +849,15 @@ export default function Home() {
                 )}
                 <button type="submit" className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-blue-700">📤 Registrar</button>
               </form>
+              {formLançamento.tipo === 'atraso' && (
+                <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+                  <label className="text-sm font-semibold text-yellow-800 flex items-center gap-2">
+                    <input type="checkbox" checked={formLançamento.avisoComunicado} onChange={(e) => setFormLançamento({ ...formLançamento, avisoComunicado: e.target.checked })} />
+                    ✅ Aviso comunicado com antecedência?
+                  </label>
+                  <p className="text-xs text-yellow-700 mt-2">Se NÃO marcar, a pessoa será desclassificada do bonus!</p>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -1192,6 +1181,9 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">🎁 Marcar Elegibilidade para Bonus</h2>
               <p className="text-gray-600 mb-4">Clique para marcar/desmarcar como elegível:</p>
@@ -1214,9 +1206,6 @@ export default function Home() {
                   );
                 })}
               </div>
-            </div>
-          </div>
-        )}
             </div>
           </div>
         )}
