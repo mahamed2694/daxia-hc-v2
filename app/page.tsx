@@ -50,13 +50,14 @@ export default function Home() {
   const [formPessoa, setFormPessoa] = useState({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
   const [formCargo, setFormCargo] = useState({ nome: '', he60: '', he100: '' });
   const [formLançamento, setFormLançamento] = useState({ 
-    pessoaId: 1, 
-    tipo: 'he-60', 
-    data: '', 
-    horas: 0, 
-    minutos: 0, 
-    descricao: '' 
-  });
+  pessoaId: 1, 
+  tipo: 'he-60', 
+  data: '', 
+  horas: 0, 
+  minutos: 0, 
+  descricao: '',
+  avisoComunicado: true
+});
 
   const cargosArray = Object.keys(tabelaHE);
 
@@ -476,9 +477,9 @@ export default function Home() {
       const pessoaId = parseInt(formLançamento.pessoaId);
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
-      } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10) {
-        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
-      }
+      } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10 && !formLançamento.avisoComunicado) {
+  await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+}
       
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '' });
       
@@ -853,6 +854,14 @@ export default function Home() {
                   <option value="saida-antecipada">🚪 Saída Antecipada</option>
                 </select>
                 <input type="date" value={formLançamento.data} onChange={(e) => setFormLançamento({ ...formLançamento, data: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
+                {formLançamento.tipo === 'atraso' && (
+  <div className="border-2 border-gray-300 rounded-lg px-4 py-3">
+    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+      <input type="checkbox" checked={formLançamento.avisoComunicado} onChange={(e) => setFormLançamento({ ...formLançamento, avisoComunicado: e.target.checked })} />
+      Aviso comunicado?
+    </label>
+  </div>
+)}
                 {['he-60', 'he-100', 'atestado-horas', 'saida-antecipada'].includes(formLançamento.tipo) ? (
                   <input type="number" step="0.5" min="0" placeholder="Horas" value={formLançamento.horas} onChange={(e) => setFormLançamento({ ...formLançamento, horas: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
                 ) : (
@@ -1183,7 +1192,31 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
-              )}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">🎁 Marcar Elegibilidade para Bonus</h2>
+              <p className="text-gray-600 mb-4">Clique para marcar/desmarcar como elegível:</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pessoas.map(p => {
+                  const bonus = bonusElegibilidade.find(b => b.pessoa_id === p.id);
+                  const elegivel = bonus?.elegivel ?? true;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handleToggleBonusElegibilidade(p.id, !elegivel)}
+                      className={`p-4 rounded-lg font-bold transition ${
+                        elegivel
+                          ? 'bg-green-100 text-green-800 border-2 border-green-500'
+                          : 'bg-red-100 text-red-800 border-2 border-red-500'
+                      }`}
+                    >
+                      {elegivel ? '✅' : '❌'} {p.nome} ({p.setor})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
             </div>
           </div>
         )}
