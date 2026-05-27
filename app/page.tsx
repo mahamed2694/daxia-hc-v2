@@ -11,15 +11,14 @@ const APP_PASSWORD = 'DAXIATEC465';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+function PasswordScreen({ onAuthenticate }) {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
     if (passwordInput === APP_PASSWORD) {
-      setIsAuthenticated(true);
+      onAuthenticate();
       setPasswordError('');
     } else {
       setPasswordError('❌ Senha incorreta! Tente novamente.');
@@ -27,55 +26,63 @@ export default function Home() {
     }
   };
 
-  // ===== SE NÃO ESTIVER AUTENTICADO, MOSTRA TELA DE SENHA =====
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-6">
-        <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-blue-600 mb-2">🔐</h1>
-            <h2 className="text-2xl font-bold text-gray-800">Daxia People Analytics</h2>
-            <p className="text-gray-600 mt-2">Acesso Protegido</p>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-6">
+      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-blue-600 mb-2">🔐</h1>
+          <h2 className="text-2xl font-bold text-gray-800">Daxia People Analytics</h2>
+          <p className="text-gray-600 mt-2">Acesso Protegido</p>
+        </div>
+
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Digite a Senha de Acesso:
+            </label>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="••••••••••"
+              className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-center text-lg"
+              autoFocus
+            />
           </div>
 
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Digite a Senha de Acesso:
-              </label>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••••••••"
-                className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-center text-lg"
-                autoFocus
-              />
+          {passwordError && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+              <p className="text-red-700 text-sm font-semibold">{passwordError}</p>
             </div>
+          )}
 
-            {passwordError && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                <p className="text-red-700 text-sm font-semibold">{passwordError}</p>
-              </div>
-            )}
+          <button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200"
+          >
+            🔓 Acessar
+          </button>
+        </form>
 
-            <button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200"
-            >
-              🔓 Acessar
-            </button>
-          </form>
-
-          <p className="text-center text-gray-500 text-xs mt-6">
-            Sistema protegido por senha
-          </p>
-        </div>
+        <p className="text-center text-gray-500 text-xs mt-6">
+          Sistema protegido por senha
+        </p>
       </div>
-    );
+    </div>
+  );
+}
+
+export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  if (!isAuthenticated) {
+    return <PasswordScreen onAuthenticate={() => setIsAuthenticated(true)} />;
   }
 
-  // ===== SE ESTIVER AUTENTICADO, MOSTRA O APP NORMAL =====
+  return <AppContent />;
+}
+
+function AppContent() {
   const cargosIniciais = {
     'AJUDANTE GERAL': { he60: 18.80, he100: 23.50 },
     'ALMOXARIFE': { he60: 25.90, he100: 32.38 },
@@ -126,7 +133,44 @@ export default function Home() {
 
   const cargosArray = Object.keys(tabelaHE);
 
+  // Carregar dados uma única vez
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const { data: pessoasData } = await supabase.from('pessoas').select('*');
+        if (pessoasData) setPessoas(pessoasData);
+
+        const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
+        if (lancamentosData) setLançamentos(lancamentosData);
+
+        const { data: heData } = await supabase.from('tabela_he').select('*');
+        if (heData && heData.length > 0) {
+          const heObj = {};
+          heData.forEach(item => {
+            heObj[item.cargo] = { he60: parseFloat(item.he60), he100: parseFloat(item.he100) };
+          });
+          setTabelaHE({ ...cargosIniciais, ...heObj });
+        }
+
+        const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+        if (auditData) setAuditoria(auditData);
+
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+
+        setIsHydrated(true);
+      } catch (error) {
+        console.error('Erro ao carregar:', error);
+        setIsHydrated(true);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Registrar auditoria
   const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
+    if (!isHydrated) return;
     try {
       await supabase.from('auditoria').insert([{
         tabela,
@@ -144,6 +188,7 @@ export default function Home() {
   };
 
   const desclassificarBonus = async (pessoaId, motivo) => {
+    if (!isHydrated) return;
     try {
       const hoje = new Date().toISOString().split('T')[0];
       
@@ -180,6 +225,7 @@ export default function Home() {
   };
 
   const inicializarBonusPessoa = async (pessoaId) => {
+    if (!isHydrated) return;
     try {
       const { data: existing } = await supabase
         .from('bonus_elegibilidade')
@@ -203,77 +249,45 @@ export default function Home() {
     }
   };
 
+  // Listeners - SEPARADO E LIMPO
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const { data: pessoasData } = await supabase.from('pessoas').select('*');
-        if (pessoasData) setPessoas(pessoasData);
-
-        const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
-        if (lancamentosData) setLançamentos(lancamentosData);
-
-        const { data: heData } = await supabase.from('tabela_he').select('*');
-        if (heData && heData.length > 0) {
-          const heObj = {};
-          heData.forEach(item => {
-            heObj[item.cargo] = { he60: parseFloat(item.he60), he100: parseFloat(item.he100) };
-          });
-          setTabelaHE({ ...cargosIniciais, ...heObj });
-        }
-
-        const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
-        if (auditData) setAuditoria(auditData);
-
-        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-        if (bonusData) setBonusElegibilidade(bonusData);
-      } catch (error) {
-        console.error('Erro ao carregar:', error);
-      }
-      setIsHydrated(true);
-    };
-
-    loadData();
-  }, []);
-
-useEffect(() => {
     if (!isHydrated) return;
 
-    const pessoasSubscription = supabase
-      .channel('pessoas-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pessoas' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setPessoas(p => [...p, payload.new]);
-          inicializarBonusPessoa(payload.new.id);
-        } else if (payload.eventType === 'DELETE') {
-          setPessoas(p => p.filter(x => x.id !== payload.old.id));
-        } else if (payload.eventType === 'UPDATE') {
-          setPessoas(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+    const channel = supabase.channel('db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pessoas' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setPessoas(p => [...p, payload.new]);
+            inicializarBonusPessoa(payload.new.id);
+          } else if (payload.eventType === 'DELETE') {
+            setPessoas(p => p.filter(x => x.id !== payload.old.id));
+          } else if (payload.eventType === 'UPDATE') {
+            setPessoas(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+          }
         }
-      })
-      .subscribe((status) => {
-        console.log('Pessoas subscription:', status);
-      });
-
-    const lancamentosSubscription = supabase
-      .channel('lancamentos-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setLançamentos(p => [...p, payload.new]);
-        } else if (payload.eventType === 'DELETE') {
-          setLançamentos(p => p.filter(x => x.id !== payload.old.id));
-        } else if (payload.eventType === 'UPDATE') {
-          setLançamentos(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'lancamentos' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setLançamentos(p => [...p, payload.new]);
+          } else if (payload.eventType === 'DELETE') {
+            setLançamentos(p => p.filter(x => x.id !== payload.old.id));
+          } else if (payload.eventType === 'UPDATE') {
+            setLançamentos(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+          }
         }
-      })
-      .subscribe((status) => {
-        console.log('Lançamentos subscription:', status);
-      });
+      )
+      .subscribe();
 
     return () => {
-      supabase.removeChannel(pessoasSubscription);
-      supabase.removeChannel(lancamentosSubscription);
+      channel.unsubscribe();
     };
   }, [isHydrated]);
+
   const lançamentosFiltrados = useMemo(() => {
     return lançamentos.filter(l => {
       const dentroData = l.data >= dataInicio && l.data <= dataFim;
@@ -541,11 +555,6 @@ useEffect(() => {
       }
       
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '', avisoComunicado: true });
-      
-      setTimeout(async () => {
-        const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
-        if (lancamentosData) setLançamentos(lancamentosData);
-      }, 500);
       
     } catch (error) {
       alert('Erro: ' + error.message);
