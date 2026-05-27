@@ -85,10 +85,9 @@ export default function Home() {
       const { data: existing } = await supabase
         .from('bonus_elegibilidade')
         .select('*')
-        .eq('pessoa_id', pessoaId)
-        .single();
+        .eq('pessoa_id', pessoaId);
       
-      if (existing) {
+      if (existing && existing.length > 0) {
         await supabase
           .from('bonus_elegibilidade')
           .update({
@@ -120,10 +119,9 @@ export default function Home() {
       const { data: existing } = await supabase
         .from('bonus_elegibilidade')
         .select('*')
-        .eq('pessoa_id', pessoaId)
-        .single();
+        .eq('pessoa_id', pessoaId);
       
-      if (!existing) {
+      if (!existing || existing.length === 0) {
         await supabase
           .from('bonus_elegibilidade')
           .insert([{
@@ -467,13 +465,13 @@ export default function Home() {
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
       } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10 && !formLançamento.avisoComunicado) {
-  await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
-} else if (formLançamento.tipo === 'saida-antecipada' && !formLançamento.avisoComunicado) {
-  await desclassificarBonus(pessoaId, `Saída antecipada não comunicada - ${formLançamento.horas}h em ${formLançamento.data}`);
-}
+        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'saida-antecipada' && !formLançamento.avisoComunicado) {
+        await desclassificarBonus(pessoaId, `Saída antecipada não comunicada - ${formLançamento.horas}h em ${formLançamento.data}`);
       } else if (formLançamento.tipo === 'advertencia') {
-  await desclassificarBonus(pessoaId, `Advertência registrada em ${formLançamento.data}`);
-}
+        await desclassificarBonus(pessoaId, `Advertência registrada em ${formLançamento.data}`);
+      }
+      
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '', avisoComunicado: true });
       
       setTimeout(async () => {
@@ -509,41 +507,41 @@ export default function Home() {
   };
 
   const handleToggleBonusElegibilidade = async (pessoaId, elegivel) => {
-  try {
-    const { data: existing } = await supabase
-      .from('bonus_elegibilidade')
-      .select('*')
-      .eq('pessoa_id', pessoaId);
-    
-    if (existing && existing.length > 0) {
-      await supabase
+    try {
+      const { data: existing } = await supabase
         .from('bonus_elegibilidade')
-        .update({
-          elegivel: elegivel,
-          data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
-          motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null
-        })
+        .select('*')
         .eq('pessoa_id', pessoaId);
-    } else {
-      await supabase
-        .from('bonus_elegibilidade')
-        .insert([{
-          pessoa_id: pessoaId,
-          elegivel: elegivel,
-          data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
-          motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null,
-          data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
-        }]);
+      
+      if (existing && existing.length > 0) {
+        await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            elegivel: elegivel,
+            data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
+            motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null
+          })
+          .eq('pessoa_id', pessoaId);
+      } else {
+        await supabase
+          .from('bonus_elegibilidade')
+          .insert([{
+            pessoa_id: pessoaId,
+            elegivel: elegivel,
+            data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
+            motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null,
+            data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
+          }]);
+      }
+      
+      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+      if (bonusData) setBonusElegibilidade(bonusData);
+      alert(`✅ ${elegivel ? 'Elegível' : 'Desclassificado'} com sucesso!`);
+    } catch (error) {
+      alert('Erro: ' + error.message);
+      console.error(error);
     }
-    
-    const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-    if (bonusData) setBonusElegibilidade(bonusData);
-    alert(`✅ ${elegivel ? 'Elegível' : 'Desclassificado'} com sucesso!`);
-  } catch (error) {
-    alert('Erro: ' + error.message);
-    console.error(error);
-  }
-};
+  };
 
   const handleReversaoBonusDesclassificacao = async (pessoaId) => {
     if (confirm('Reverter desclassificação? Pessoa volta a ser elegível?')) {
@@ -587,7 +585,16 @@ export default function Home() {
   };
 
   const getTipoLabel = (tipo) => {
-  const labels = { 'he-60': '⏰ HE 60%', 'he-100': '⏰ HE 100%', 'atraso': '🔴 Atraso', 'atestado-horas': '📋 Atestado de Horas', 'falta-total': '❌ Falta Total', 'atestado': '📄 Atestado', 'saida-antecipada': '🚪 Saída Antecipada', 'advertencia': '⚠️ Advertência' };
+    const labels = { 
+      'he-60': '⏰ HE 60%', 
+      'he-100': '⏰ HE 100%', 
+      'atraso': '🔴 Atraso', 
+      'atestado-horas': '📋 Atestado de Horas', 
+      'falta-total': '❌ Falta Total', 
+      'atestado': '📄 Atestado', 
+      'saida-antecipada': '🚪 Saída Antecipada',
+      'advertencia': '⚠️ Advertência'
+    };
     return labels[tipo] || tipo;
   };
 
@@ -596,6 +603,7 @@ export default function Home() {
     if (tipo === 'atraso') return 'bg-orange-100 text-orange-800';
     if (tipo === 'falta-total' || tipo === 'atestado-horas') return 'bg-red-100 text-red-800';
     if (tipo === 'atestado' || tipo === 'saida-antecipada') return 'bg-yellow-100 text-yellow-800';
+    if (tipo === 'advertencia') return 'bg-purple-100 text-purple-800';
     return 'bg-gray-100 text-gray-800';
   };
 
