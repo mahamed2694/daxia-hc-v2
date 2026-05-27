@@ -505,31 +505,41 @@ export default function Home() {
   };
 
   const handleToggleBonusElegibilidade = async (pessoaId, elegivel) => {
-    try {
-      const { data: existing } = await supabase
+  try {
+    const { data: existing } = await supabase
+      .from('bonus_elegibilidade')
+      .select('*')
+      .eq('pessoa_id', pessoaId);
+    
+    if (existing && existing.length > 0) {
+      await supabase
         .from('bonus_elegibilidade')
-        .select('*')
-        .eq('pessoa_id', pessoaId)
-        .single();
-      
-      if (existing) {
-        await supabase
-          .from('bonus_elegibilidade')
-          .update({
-            elegivel: elegivel,
-            data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
-            motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null
-          })
-          .eq('pessoa_id', pessoaId);
-      }
-      
-      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-      if (bonusData) setBonusElegibilidade(bonusData);
-      alert(`✅ ${elegivel ? 'Elegível' : 'Desclassificado'} com sucesso!`);
-    } catch (error) {
-      alert('Erro: ' + error.message);
+        .update({
+          elegivel: elegivel,
+          data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
+          motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null
+        })
+        .eq('pessoa_id', pessoaId);
+    } else {
+      await supabase
+        .from('bonus_elegibilidade')
+        .insert([{
+          pessoa_id: pessoaId,
+          elegivel: elegivel,
+          data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
+          motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null,
+          data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
+        }]);
     }
-  };
+    
+    const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+    if (bonusData) setBonusElegibilidade(bonusData);
+    alert(`✅ ${elegivel ? 'Elegível' : 'Desclassificado'} com sucesso!`);
+  } catch (error) {
+    alert('Erro: ' + error.message);
+    console.error(error);
+  }
+};
 
   const handleReversaoBonusDesclassificacao = async (pessoaId) => {
     if (confirm('Reverter desclassificação? Pessoa volta a ser elegível?')) {
