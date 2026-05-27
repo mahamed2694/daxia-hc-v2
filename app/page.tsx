@@ -837,7 +837,7 @@ export default function Home() {
                           </span>
                         </td>
                         <td className="py-3 px-3 text-xs text-gray-600">{a.usuario}</td>
-                        <td className="py-3 px-3 text-xs text-gray-600">{new Date(new Date(a.criado_em).getTime() + (3 * 60 * 60 * 1000)).toLocaleString('pt-BR')}</td>
+                        <td className="py-3 px-3 text-xs text-gray-600">{new Date(new Date(a.criado_em).getTime() - (3 * 60 * 60 * 1000)).toLocaleString('pt-BR')}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">
                           {a.dados_novos ? `ID: ${a.dados_novos?.id || a.dados_novos?.cargo || a.dados_novos?.email || '-'}` : (a.dados_anteriores ? `ID: ${a.dados_anteriores?.id || a.dados_anteriores?.cargo || a.dados_anteriores?.email || '-'}` : '-')}
                         </td>
