@@ -3,14 +3,12 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const SUPABASE_URL = 'https://blsdahvliocoqqdzkzym.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XNUPzuPEgFil7C736xv_5Q_WzNDRuzp';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-const CORES_PIZZA = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function Home() {
   const cargosIniciais = {
@@ -63,16 +61,20 @@ export default function Home() {
 
   const cargosArray = Object.keys(tabelaHE);
 
-  // Registrar auditoria
-  const registrarAuditoria = async (tabela, acao, dadosNovos, dadosAnteriores = null) => {
+  // Registrar auditoria com dados do usuário
+  const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
     try {
       await supabase.from('auditoria').insert([{
         tabela,
         acao,
-        usuario: 'Sistema',
-        dados_novos: dadosNovos,
-        dados_anteriores: dadosAnteriores
+        usuario: 'Usuário Sistema',
+        dados_novos: dados,
+        dados_anteriores: detalhes
       }]);
+      
+      // Recarregar auditoria
+      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+      if (auditData) setAuditoria(auditData);
     } catch (error) {
       console.error('Erro ao registrar auditoria:', error);
     }
@@ -118,13 +120,10 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pessoas' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setPessoas(p => [...p, payload.new]);
-          registrarAuditoria('pessoas', 'INSERT', payload.new);
         } else if (payload.eventType === 'DELETE') {
           setPessoas(p => p.filter(x => x.id !== payload.old.id));
-          registrarAuditoria('pessoas', 'DELETE', null, payload.old);
         } else if (payload.eventType === 'UPDATE') {
           setPessoas(p => p.map(x => x.id === payload.new.id ? payload.new : x));
-          registrarAuditoria('pessoas', 'UPDATE', payload.new, payload.old);
         }
       })
       .subscribe();
@@ -134,13 +133,10 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setLançamentos(p => [...p, payload.new]);
-          registrarAuditoria('lancamentos', 'INSERT', payload.new);
         } else if (payload.eventType === 'DELETE') {
           setLançamentos(p => p.filter(x => x.id !== payload.old.id));
-          registrarAuditoria('lancamentos', 'DELETE', null, payload.old);
         } else if (payload.eventType === 'UPDATE') {
           setLançamentos(p => p.map(x => x.id === payload.new.id ? payload.new : x));
-          registrarAuditoria('lancamentos', 'UPDATE', payload.new, payload.old);
         }
       })
       .subscribe();
@@ -329,8 +325,9 @@ export default function Home() {
       return;
     }
     try {
-      const { error } = await supabase.from('pessoas').insert([formPessoa]);
+      const { data, error } = await supabase.from('pessoas').insert([formPessoa]).select();
       if (error) throw error;
+      registrarAuditoria('pessoas', 'INSERT', data[0]);
       setFormPessoa({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
     } catch (error) {
       alert('Erro: ' + error.message);
@@ -349,12 +346,13 @@ export default function Home() {
       return;
     }
     try {
-      const { error } = await supabase.from('tabela_he').insert([{
+      const { data, error } = await supabase.from('tabela_he').insert([{
         cargo: nomeCargo,
         he60: parseFloat(formCargo.he60),
         he100: parseFloat(formCargo.he100)
-      }]);
+      }]).select();
       if (error) throw error;
+      registrarAuditoria('tabela_he', 'INSERT', data[0]);
       setTabelaHE({ ...tabelaHE, [nomeCargo]: { he60: parseFloat(formCargo.he60), he100: parseFloat(formCargo.he100) } });
       setFormCargo({ nome: '', he60: '', he100: '' });
       alert('✅ Cargo adicionado!');
@@ -370,8 +368,9 @@ export default function Home() {
     }
     if (confirm(`Deletar "${nomeCargo}"?`)) {
       try {
-        const { error } = await supabase.from('tabela_he').delete().eq('cargo', nomeCargo);
-        if (error) throw error;
+        const cargoData = { cargo: nomeCargo, he60: tabelaHE[nomeCargo].he60, he100: tabelaHE[nomeCargo].he100 };
+        await supabase.from('tabela_he').delete().eq('cargo', nomeCargo);
+        registrarAuditoria('tabela_he', 'DELETE', null, cargoData);
         const novaTabela = { ...tabelaHE };
         delete novaTabela[nomeCargo];
         setTabelaHE(novaTabela);
@@ -393,15 +392,17 @@ export default function Home() {
       if (formLançamento.tipo === 'falta-total' || formLançamento.tipo === 'atestado') {
         horas = horasUteisDia;
       }
-      const { error } = await supabase.from('lancamentos').insert([{
+      const lancamentoData = {
         pessoa_id: parseInt(formLançamento.pessoaId),
         tipo: formLançamento.tipo,
         data: formLançamento.data,
         horas: ['he-60', 'he-100', 'atestado-horas', 'saida-antecipada'].includes(formLançamento.tipo) ? parseFloat(formLançamento.horas) || 0 : horas,
         minutos: formLançamento.tipo === 'atraso' ? parseInt(formLançamento.minutos) || 0 : 0,
         descricao: formLançamento.descricao
-      }]);
+      };
+      const { data, error } = await supabase.from('lancamentos').insert([lancamentoData]).select();
       if (error) throw error;
+      registrarAuditoria('lancamentos', 'INSERT', data[0]);
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '' });
       
       setTimeout(async () => {
@@ -415,10 +416,11 @@ export default function Home() {
   };
 
   const handleDeletarPessoa = async (id) => {
+    const pessoa = pessoas.find(p => p.id === id);
     if (confirm('Deletar pessoa?')) {
       try {
-        const { error } = await supabase.from('pessoas').delete().eq('id', id);
-        if (error) throw error;
+        await supabase.from('pessoas').delete().eq('id', id);
+        registrarAuditoria('pessoas', 'DELETE', null, pessoa);
       } catch (error) {
         alert('Erro: ' + error.message);
       }
@@ -426,9 +428,10 @@ export default function Home() {
   };
 
   const handleDeletarLançamento = async (id) => {
+    const lançamento = lançamentos.find(l => l.id === id);
     try {
-      const { error } = await supabase.from('lancamentos').delete().eq('id', id);
-      if (error) throw error;
+      await supabase.from('lancamentos').delete().eq('id', id);
+      registrarAuditoria('lancamentos', 'DELETE', null, lançamento);
     } catch (error) {
       alert('Erro: ' + error.message);
     }
@@ -441,11 +444,12 @@ export default function Home() {
       return;
     }
     try {
-      const { error } = await supabase.from('emails_relatorio').insert([{
+      const { data, error } = await supabase.from('emails_relatorio').insert([{
         email: formEmail.email,
         ativo: true
-      }]);
+      }]).select();
       if (error) throw error;
+      registrarAuditoria('emails_relatorio', 'INSERT', data[0]);
       setFormEmail({ email: '' });
       const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
       if (emailsData) setEmailsRelatorio(emailsData);
@@ -456,10 +460,11 @@ export default function Home() {
   };
 
   const handleRemoverEmail = async (id) => {
+    const email = emailsRelatorio.find(e => e.id === id);
     if (confirm('Remover este email?')) {
       try {
-        const { error } = await supabase.from('emails_relatorio').update({ ativo: false }).eq('id', id);
-        if (error) throw error;
+        await supabase.from('emails_relatorio').update({ ativo: false }).eq('id', id);
+        registrarAuditoria('emails_relatorio', 'DELETE', null, email);
         const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
         if (emailsData) setEmailsRelatorio(emailsData);
         alert('✅ Email removido!');
@@ -492,76 +497,11 @@ export default function Home() {
   const handleEnviarEmailTeste = async () => {
     setEnviandoEmailTeste(true);
     try {
-      alert('✅ Função de envio de email está em desenvolvimento.\nVocê pode usar serviços como:\n- Gmail SMTP\n- SendGrid\n- Mailgun\n\nContacte o suporte para configurar!');
+      alert('✅ Email configurado!\n\nPara automatizar o envio, use:\n\n📌 ZAPIER ou MAKE.COM\n\nVocê configura via website (sem código!)\n\nLink: www.zapier.com');
     } catch (error) {
       alert('Erro ao enviar email: ' + error.message);
     } finally {
       setEnviandoEmailTeste(false);
-    }
-  };
-
-  const handleExportarPDF = async () => {
-    try {
-      const { jsPDF } = await import('jspdf');
-      const html2canvas = (await import('html2canvas')).default;
-      
-      const doc = new jsPDF('p', 'mm', 'a4');
-      let yPosition = 20;
-
-      // Título
-      doc.setFontSize(20);
-      doc.text('📊 Daxia People Analytics', 20, yPosition);
-      yPosition += 15;
-
-      // Data do relatório
-      doc.setFontSize(10);
-      doc.text(`Período: ${dataInicio} a ${dataFim}`, 20, yPosition);
-      yPosition += 10;
-
-      // Resumo
-      doc.setFontSize(14);
-      doc.text('📋 Resumo', 20, yPosition);
-      yPosition += 10;
-      
-      doc.setFontSize(11);
-      doc.text(`Total HE: R$ ${totalHE.toFixed(2)}`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Taxa Absenteísmo: ${abs.taxaAbs}%`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Colaboradores: ${pessoas.length}`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Lançamentos: ${lançamentosFiltrados.length}`, 20, yPosition);
-      yPosition += 15;
-
-      // Top 5 HE
-      doc.setFontSize(14);
-      doc.text('🏆 Top 5 - Maior HE', 20, yPosition);
-      yPosition += 10;
-      
-      doc.setFontSize(10);
-      topHEPessoas.slice(0, 5).forEach((p, idx) => {
-        doc.text(`${idx + 1}. ${p.nome}: R$ ${p.valor.toFixed(2)}`, 20, yPosition);
-        yPosition += 7;
-      });
-
-      doc.addPage();
-      yPosition = 20;
-
-      // Top 5 Absenteísmo
-      doc.setFontSize(14);
-      doc.text('🏆 Top 5 - Maior Absenteísmo', 20, yPosition);
-      yPosition += 10;
-      
-      doc.setFontSize(10);
-      topAbsenteismoPessoas.slice(0, 5).forEach((p, idx) => {
-        doc.text(`${idx + 1}. ${p.nome}: ${p.valor.toFixed(1)}h`, 20, yPosition);
-        yPosition += 7;
-      });
-
-      doc.save(`Relatorio_Daxia_${dataFim}.pdf`);
-      alert('✅ PDF exportado com sucesso!');
-    } catch (error) {
-      alert('Erro ao exportar PDF: ' + error.message);
     }
   };
 
@@ -633,10 +573,7 @@ export default function Home() {
             <h1 className="text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
             <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleExportarCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 CSV</button>
-            <button onClick={handleExportarPDF} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📄 PDF</button>
-          </div>
+          <button onClick={handleExportarCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
         </div>
 
         <div className="flex gap-2 mb-8 border-b-2 border-gray-300 overflow-x-auto">
@@ -902,7 +839,7 @@ export default function Home() {
                         <td className="py-3 px-3 text-xs text-gray-600">{a.usuario}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">{new Date(a.criado_em).toLocaleString('pt-BR')}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">
-                          {a.dados_novos ? `ID: ${a.dados_novos?.id || '-'}` : '-'}
+                          {a.dados_novos ? `ID: ${a.dados_novos?.id || a.dados_novos?.cargo || a.dados_novos?.email || '-'}` : (a.dados_anteriores ? `ID: ${a.dados_anteriores?.id || a.dados_anteriores?.cargo || a.dados_anteriores?.email || '-'}` : '-')}
                         </td>
                       </tr>
                     ))}
@@ -920,7 +857,7 @@ export default function Home() {
               <form onSubmit={handleAdicionarEmail} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <input type="email" placeholder="seu@email.com" value={formEmail.email} onChange={(e) => setFormEmail({ email: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
                 <button type="submit" className="bg-green-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-green-700">✅ Adicionar</button>
-                <button type="button" onClick={handleEnviarEmailTeste} disabled={enviandoEmailTeste} className="bg-purple-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-purple-700 disabled:opacity-50">📧 Teste</button>
+                <button type="button" onClick={handleEnviarEmailTeste} disabled={enviandoEmailTeste} className="bg-purple-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-purple-700 disabled:opacity-50">📧 Info Email</button>
               </form>
 
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
