@@ -467,9 +467,13 @@ export default function Home() {
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
       } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10 && !formLançamento.avisoComunicado) {
-        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
-      }
-      
+  await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+} else if (formLançamento.tipo === 'saida-antecipada' && !formLançamento.avisoComunicado) {
+  await desclassificarBonus(pessoaId, `Saída antecipada não comunicada - ${formLançamento.horas}h em ${formLançamento.data}`);
+}
+      } else if (formLançamento.tipo === 'advertencia') {
+  await desclassificarBonus(pessoaId, `Advertência registrada em ${formLançamento.data}`);
+}
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '', avisoComunicado: true });
       
       setTimeout(async () => {
@@ -583,7 +587,7 @@ export default function Home() {
   };
 
   const getTipoLabel = (tipo) => {
-    const labels = { 'he-60': '⏰ HE 60%', 'he-100': '⏰ HE 100%', 'atraso': '🔴 Atraso', 'atestado-horas': '📋 Atestado de Horas', 'falta-total': '❌ Falta Total', 'atestado': '📄 Atestado', 'saida-antecipada': '🚪 Saída Antecipada' };
+  const labels = { 'he-60': '⏰ HE 60%', 'he-100': '⏰ HE 100%', 'atraso': '🔴 Atraso', 'atestado-horas': '📋 Atestado de Horas', 'falta-total': '❌ Falta Total', 'atestado': '📄 Atestado', 'saida-antecipada': '🚪 Saída Antecipada', 'advertencia': '⚠️ Advertência' };
     return labels[tipo] || tipo;
   };
 
@@ -850,6 +854,7 @@ export default function Home() {
                   <option value="atestado-horas">📋 Atestado de Horas</option>
                   <option value="atestado">📄 Atestado</option>
                   <option value="saida-antecipada">🚪 Saída Antecipada</option>
+                  <option value="advertencia">⚠️ Advertência</option>
                 </select>
                 <input type="date" value={formLançamento.data} onChange={(e) => setFormLançamento({ ...formLançamento, data: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
                 {['he-60', 'he-100', 'atestado-horas', 'saida-antecipada'].includes(formLançamento.tipo) ? (
@@ -859,7 +864,7 @@ export default function Home() {
                 )}
                 <button type="submit" className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-blue-700">📤 Registrar</button>
               </form>
-              {formLançamento.tipo === 'atraso' && (
+              {(formLançamento.tipo === 'atraso' || formLançamento.tipo === 'saida-antecipada') && (
                 <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
                   <label className="text-sm font-semibold text-yellow-800 flex items-center gap-2">
                     <input type="checkbox" checked={formLançamento.avisoComunicado} onChange={(e) => setFormLançamento({ ...formLançamento, avisoComunicado: e.target.checked })} />
