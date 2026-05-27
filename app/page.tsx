@@ -235,7 +235,7 @@ export default function Home() {
     loadData();
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
     if (!isHydrated) return;
 
     const pessoasSubscription = supabase
@@ -250,7 +250,9 @@ export default function Home() {
           setPessoas(p => p.map(x => x.id === payload.new.id ? payload.new : x));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Pessoas subscription:', status);
+      });
 
     const lancamentosSubscription = supabase
       .channel('lancamentos-changes')
@@ -263,14 +265,15 @@ export default function Home() {
           setLançamentos(p => p.map(x => x.id === payload.new.id ? payload.new : x));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Lançamentos subscription:', status);
+      });
 
     return () => {
-      pessoasSubscription.unsubscribe();
-      lancamentosSubscription.unsubscribe();
+      supabase.removeChannel(pessoasSubscription);
+      supabase.removeChannel(lancamentosSubscription);
     };
   }, [isHydrated]);
-
   const lançamentosFiltrados = useMemo(() => {
     return lançamentos.filter(l => {
       const dentroData = l.data >= dataInicio && l.data <= dataFim;
