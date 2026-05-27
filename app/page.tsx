@@ -30,6 +30,7 @@ export default function Home() {
   };
 
   const setores = ['Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
+  const VALOR_BONUS = 100;
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState('resumos');
@@ -44,7 +45,7 @@ export default function Home() {
   const [pessoas, setPessoas] = useState([]);
   const [lançamentos, setLançamentos] = useState([]);
   const [auditoria, setAuditoria] = useState([]);
-  const [emailsRelatorio, setEmailsRelatorio] = useState([]);
+  const [bonusElegibilidade, setBonusElegibilidade] = useState([]);
 
   const [formPessoa, setFormPessoa] = useState({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
   const [formCargo, setFormCargo] = useState({ nome: '', he60: '', he100: '' });
@@ -56,8 +57,6 @@ export default function Home() {
     minutos: 0, 
     descricao: '' 
   });
-  const [formEmail, setFormEmail] = useState({ email: '' });
-  const [enviandoEmailTeste, setEnviandoEmailTeste] = useState(false);
 
   const cargosArray = Object.keys(tabelaHE);
 
@@ -77,6 +76,74 @@ export default function Home() {
       if (auditData) setAuditoria(auditData);
     } catch (error) {
       console.error('Erro ao registrar auditoria:', error);
+    }
+  };
+
+  // Desclassificar automaticamente no bonus
+  const desclassificarBonus = async (pessoaId, motivo) => {
+    try {
+      const hoje = new Date().toISOString().split('T')[0];
+      
+      // Verificar se já existe registro
+      const { data: existing } = await supabase
+        .from('bonus_elegibilidade')
+        .select('*')
+        .eq('pessoa_id', pessoaId)
+        .single();
+      
+      if (existing) {
+        // Atualizar
+        await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            elegivel: false,
+            data_desclassificacao: hoje,
+            motivo_desclassificacao: motivo
+          })
+          .eq('pessoa_id', pessoaId);
+      } else {
+        // Criar novo
+        await supabase
+          .from('bonus_elegibilidade')
+          .insert([{
+            pessoa_id: pessoaId,
+            elegivel: false,
+            data_desclassificacao: hoje,
+            motivo_desclassificacao: motivo
+          }]);
+      }
+      
+      // Recarregar bonus
+      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+      if (bonusData) setBonusElegibilidade(bonusData);
+    } catch (error) {
+      console.error('Erro ao desclassificar bonus:', error);
+    }
+  };
+
+  // Inicializar elegibilidade para pessoa nova
+  const inicializarBonusPessoa = async (pessoaId) => {
+    try {
+      const { data: existing } = await supabase
+        .from('bonus_elegibilidade')
+        .select('*')
+        .eq('pessoa_id', pessoaId)
+        .single();
+      
+      if (!existing) {
+        await supabase
+          .from('bonus_elegibilidade')
+          .insert([{
+            pessoa_id: pessoaId,
+            elegivel: true,
+            data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
+          }]);
+        
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+      }
+    } catch (error) {
+      console.error('Erro ao inicializar bonus:', error);
     }
   };
 
@@ -101,8 +168,8 @@ export default function Home() {
         const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
         if (auditData) setAuditoria(auditData);
 
-        const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
-        if (emailsData) setEmailsRelatorio(emailsData);
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
       } catch (error) {
         console.error('Erro ao carregar:', error);
       }
@@ -120,6 +187,7 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pessoas' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setPessoas(p => [...p, payload.new]);
+          inicializarBonusPessoa(payload.new.id);
         } else if (payload.eventType === 'DELETE') {
           setPessoas(p => p.filter(x => x.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
@@ -403,6 +471,15 @@ export default function Home() {
       const { data, error } = await supabase.from('lancamentos').insert([lancamentoData]).select();
       if (error) throw error;
       registrarAuditoria('lancamentos', 'INSERT', data[0]);
+      
+      // Desclassificar automaticamente se necessário
+      const pessoaId = parseInt(formLançamento.pessoaId);
+      if (formLançamento.tipo === 'falta-total') {
+        await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10) {
+        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+      }
+      
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '' });
       
       setTimeout(async () => {
@@ -437,71 +514,72 @@ export default function Home() {
     }
   };
 
-  const handleAdicionarEmail = async (e) => {
-    e.preventDefault();
-    if (!formEmail.email) {
-      alert('Preencha o email!');
-      return;
-    }
+  // Funções de Bonus
+  const handleToggleBonusElegibilidade = async (pessoaId, elegivel) => {
     try {
-      const { data, error } = await supabase.from('emails_relatorio').insert([{
-        email: formEmail.email,
-        ativo: true
-      }]).select();
-      if (error) throw error;
-      registrarAuditoria('emails_relatorio', 'INSERT', data[0]);
-      setFormEmail({ email: '' });
-      const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
-      if (emailsData) setEmailsRelatorio(emailsData);
-      alert('✅ Email adicionado!');
+      const { data: existing } = await supabase
+        .from('bonus_elegibilidade')
+        .select('*')
+        .eq('pessoa_id', pessoaId)
+        .single();
+      
+      if (existing) {
+        await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            elegivel: elegivel,
+            data_desclassificacao: !elegivel ? new Date().toISOString().split('T')[0] : null,
+            motivo_desclassificacao: !elegivel ? 'Ajuste manual do gerente' : null
+          })
+          .eq('pessoa_id', pessoaId);
+      }
+      
+      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+      if (bonusData) setBonusElegibilidade(bonusData);
+      alert(`✅ ${elegivel ? 'Elegível' : 'Desclassificado'} com sucesso!`);
     } catch (error) {
       alert('Erro: ' + error.message);
     }
   };
 
-  const handleRemoverEmail = async (id) => {
-    const email = emailsRelatorio.find(e => e.id === id);
-    if (confirm('Remover este email?')) {
+  const handleReversaoBonusDesclassificacao = async (pessoaId) => {
+    if (confirm('Reverter desclassificação? Pessoa volta a ser elegível?')) {
       try {
-        await supabase.from('emails_relatorio').update({ ativo: false }).eq('id', id);
-        registrarAuditoria('emails_relatorio', 'DELETE', null, email);
-        const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
-        if (emailsData) setEmailsRelatorio(emailsData);
-        alert('✅ Email removido!');
+        await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            elegivel: true,
+            data_desclassificacao: null,
+            motivo_desclassificacao: null
+          })
+          .eq('pessoa_id', pessoaId);
+        
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+        alert('✅ Desclassificação revertida!');
       } catch (error) {
         alert('Erro: ' + error.message);
       }
     }
   };
 
-  const handleExportarCSV = () => {
-    const dados = lançamentos.map(l => {
-      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
-      const tabela = tabelaHE[pessoa?.cargo];
-      const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : l.tipo === 'he-100' ? (tabela?.he100 || 0) * l.horas : 0;
-      return { Pessoa: pessoa?.nome, Setor: pessoa?.setor, Cargo: pessoa?.cargo, Tipo: l.tipo, Data: new Date(l.data + 'T00:00:00').toLocaleDateString('pt-BR'), Horas: l.horas || (l.minutos + ' min'), 'Valor (R$)': valor.toFixed(2) };
-    });
-    const headers = ['Pessoa', 'Setor', 'Cargo', 'Tipo', 'Data', 'Horas', 'Valor (R$)'];
-    const csv = [headers.join(','), ...dados.map(row => headers.map(h => { const v = row[h]; return typeof v === 'string' && v.includes(',') ? `"${v}"` : v; }).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'Daxia_Lancamentos.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleEnviarEmailTeste = async () => {
-    setEnviandoEmailTeste(true);
-    try {
-      alert('✅ Email configurado!\n\nPara automatizar o envio, use:\n\n📌 ZAPIER ou MAKE.COM\n\nVocê configura via website (sem código!)\n\nLink: www.zapier.com');
-    } catch (error) {
-      alert('Erro ao enviar email: ' + error.message);
-    } finally {
-      setEnviandoEmailTeste(false);
+  const handleResetBonusmensal = async () => {
+    if (confirm('⚠️ RESET MENSAL - Todos voltarão a ser elegíveis. Tem certeza?')) {
+      try {
+        await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            elegivel: true,
+            data_desclassificacao: null,
+            motivo_desclassificacao: null
+          });
+        
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+        alert('✅ Reset mensal realizado! Todos elegíveis novamente.');
+      } catch (error) {
+        alert('Erro: ' + error.message);
+      }
     }
   };
 
@@ -573,7 +651,25 @@ export default function Home() {
             <h1 className="text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
             <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>
           </div>
-          <button onClick={handleExportarCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
+          <button onClick={() => {
+            const dados = lançamentos.map(l => {
+              const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+              const tabela = tabelaHE[pessoa?.cargo];
+              const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : l.tipo === 'he-100' ? (tabela?.he100 || 0) * l.horas : 0;
+              return { Pessoa: pessoa?.nome, Setor: pessoa?.setor, Cargo: pessoa?.cargo, Tipo: l.tipo, Data: new Date(l.data + 'T00:00:00').toLocaleDateString('pt-BR'), Horas: l.horas || (l.minutos + ' min'), 'Valor (R$)': valor.toFixed(2) };
+            });
+            const headers = ['Pessoa', 'Setor', 'Cargo', 'Tipo', 'Data', 'Horas', 'Valor (R$)'];
+            const csv = [headers.join(','), ...dados.map(row => headers.map(h => { const v = row[h]; return typeof v === 'string' && v.includes(',') ? `"${v}"` : v; }).join(','))].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'Daxia_Lancamentos.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
         </div>
 
         <div className="flex gap-2 mb-8 border-b-2 border-gray-300 overflow-x-auto">
@@ -581,6 +677,7 @@ export default function Home() {
           <button onClick={() => setAbaAtiva('dashboard')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'dashboard' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>📈 Dashboard</button>
           <button onClick={() => setAbaAtiva('lançamentos')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'lançamentos' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>📝 Lançamentos</button>
           <button onClick={() => setAbaAtiva('auditoria')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'auditoria' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>🔍 Auditoria</button>
+          <button onClick={() => setAbaAtiva('bonus')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'bonus' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>🎁 Bonus</button>
           <button onClick={() => setAbaAtiva('configuracao')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'configuracao' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>⚙️ Configuração</button>
         </div>
         {abaAtiva === 'resumos' && (
@@ -839,7 +936,7 @@ export default function Home() {
                         <td className="py-3 px-3 text-xs text-gray-600">{a.usuario}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">{new Date(new Date(a.criado_em).getTime() - (3 * 60 * 60 * 1000)).toLocaleString('pt-BR')}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">
-                          {a.dados_novos ? `ID: ${a.dados_novos?.id || a.dados_novos?.cargo || a.dados_novos?.email || '-'}` : (a.dados_anteriores ? `ID: ${a.dados_anteriores?.id || a.dados_anteriores?.cargo || a.dados_anteriores?.email || '-'}` : '-')}
+                          {a.dados_novos ? `ID: ${a.dados_novos?.id || a.dados_novos?.cargo || '-'}` : (a.dados_anteriores ? `ID: ${a.dados_anteriores?.id || a.dados_anteriores?.cargo || '-'}` : '-')}
                         </td>
                       </tr>
                     ))}
@@ -850,39 +947,143 @@ export default function Home() {
           </div>
         )}
 
-        {abaAtiva === 'configuracao' && (
+        {abaAtiva === 'bonus' && (
           <div className="space-y-8">
             <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">📧 Emails para Relatório</h2>
-              <form onSubmit={handleAdicionarEmail} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <input type="email" placeholder="seu@email.com" value={formEmail.email} onChange={(e) => setFormEmail({ email: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
-                <button type="submit" className="bg-green-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-green-700">✅ Adicionar</button>
-                <button type="button" onClick={handleEnviarEmailTeste} disabled={enviandoEmailTeste} className="bg-purple-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-purple-700 disabled:opacity-50">📧 Info Email</button>
-              </form>
-
-              <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                <h3 className="font-bold text-gray-800 mb-3">📋 Emails Cadastrados:</h3>
-                {emailsRelatorio.length === 0 ? (
-                  <p className="text-gray-600 text-sm">Nenhum email cadastrado</p>
-                ) : (
-                  <div className="space-y-2">
-                    {emailsRelatorio.map(e => (
-                      <div key={e.id} className="flex justify-between items-center bg-white p-3 rounded border border-gray-300">
-                        <span className="text-gray-800">{e.email}</span>
-                        <button onClick={() => handleRemoverEmail(e.id)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-bold">🗑️</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">🎁 Gestão de Bonus</h2>
+                <button onClick={handleResetBonusmensal} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm">🔄 Reset Mensal</button>
               </div>
 
-              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                <p className="text-blue-800 text-sm font-semibold">⏰ Frequência de Envio:</p>
-                <p className="text-blue-700 text-sm mt-1">• Toda sexta-feira às 08h</p>
-                <p className="text-blue-700 text-sm">• Primeiro dia do mês às 08h</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6">
+                  <p className="text-sm font-semibold opacity-80">Elegiveis</p>
+                  <p className="text-4xl font-bold mt-2">{bonusElegibilidade.filter(b => b.elegivel).length}</p>
+                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                </div>
+                <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-6">
+                  <p className="text-sm font-semibold opacity-80">Desclassificados</p>
+                  <p className="text-4xl font-bold mt-2">{bonusElegibilidade.filter(b => !b.elegivel).length}</p>
+                  <p className="text-xs opacity-80 mt-2">Retirados do bonus</p>
+                </div>
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
+                  <p className="text-sm font-semibold opacity-80">Valor Total</p>
+                  <p className="text-4xl font-bold mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                  <p className="text-xs opacity-80 mt-2">A pagar</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-green-50 rounded-lg shadow-lg p-6 border-l-4 border-green-500">
+                  <h3 className="text-xl font-bold text-green-800 mb-4">✅ Elegiveis para Bonus</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id)).length > 0 ? (
+                      bonusElegibilidade.filter(b => b.elegivel).map(bonus => {
+                        const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+                        return (
+                          <div key={bonus.id} className="flex justify-between items-center bg-white p-3 rounded border border-green-300">
+                            <div>
+                              <p className="font-semibold text-gray-800">✅ {pessoa?.nome}</p>
+                              <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-green-600">R$ {VALOR_BONUS}</p>
+                              <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-gray-600 text-center py-4">Nenhum elegível</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-red-50 rounded-lg shadow-lg p-6 border-l-4 border-red-500">
+                  <h3 className="text-xl font-bold text-red-800 mb-4">❌ Desclassificados</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id)).length > 0 ? (
+                      bonusElegibilidade.filter(b => !b.elegivel).map(bonus => {
+                        const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+                        return (
+                          <div key={bonus.id} className="bg-white p-3 rounded border border-red-300 opacity-70">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-semibold text-gray-800 line-through">❌ {pessoa?.nome}</p>
+                                <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
+                                <p className="text-xs text-red-600 font-semibold mt-1">Motivo: {bonus.motivo_desclassificacao || 'Não especificado'}</p>
+                                <p className="text-xs text-gray-500">Data: {new Date(bonus.data_desclassificacao + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+                              </div>
+                              {bonus.reversivel && (
+                                <button onClick={() => handleReversaoBonusDesclassificacao(bonus.pessoa_id)} className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs font-bold">↩️</button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-gray-600 text-center py-4">Nenhum desclassificado</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">📄 Relatório para RH</h2>
+              <button onClick={() => {
+                const hoje = new Date().toLocaleDateString('pt-BR');
+                const elegiveis = bonusElegibilidade.filter(b => b.elegivel);
+                const desclassificados = bonusElegibilidade.filter(b => !b.elegivel);
+                const totalBonus = elegiveis.length * VALOR_BONUS;
+
+                let conteudo = `DAXIA PEOPLE ANALYTICS - RELATÓRIO DE BONUS\n`;
+                conteudo += `Data: ${hoje}\n`;
+                conteudo += `=${"=".repeat(60)}\n\n`;
+                
+                conteudo += `RESUMO\n`;
+                conteudo += `-${"-".repeat(60)}\n`;
+                conteudo += `Total de Colaboradores: ${pessoas.length}\n`;
+                conteudo += `Elegiveis: ${elegiveis.length}\n`;
+                conteudo += `Desclassificados: ${desclassificados.length}\n`;
+                conteudo += `Valor do Bonus: R$ ${VALOR_BONUS} (cada)\n`;
+                conteudo += `Total a Pagar: R$ ${totalBonus}\n\n`;
+
+                conteudo += `COLABORADORES ELEGIVEIS\n`;
+                conteudo += `-${"-".repeat(60)}\n`;
+                elegiveis.forEach((bonus, idx) => {
+                  const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${VALOR_BONUS}\n`;
+                });
+
+                conteudo += `\nCOLABORADORES DESCLASSIFICADOS\n`;
+                conteudo += `-${"-".repeat(60)}\n`;
+                desclassificados.forEach((bonus, idx) => {
+                  const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo})\n`;
+                  conteudo += `   Motivo: ${bonus.motivo_desclassificacao}\n`;
+                  conteudo += `   Data: ${new Date(bonus.data_desclassificacao + 'T00:00:00').toLocaleDateString('pt-BR')}\n`;
+                });
+
+                conteudo += `\n=${"=".repeat(60)}\n`;
+                conteudo += `Gerado automaticamente pelo Daxia People Analytics\n`;
+
+                const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `Relatorio_Bonus_${new Date().toISOString().split('T')[0]}.txt`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">📥 Baixar Relatório (TXT)</button>
+            </div>
+          </div>
+        )}
+
+        {abaAtiva === 'configuracao' && (
+          <div className="space-y-8">
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">🎯 Metas</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
