@@ -2,6 +2,12 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://blsdahvliocqqdzkzym.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_XNUPzuPEgFil7C736xv_5Q_WzNDRuzp';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export default function Home() {
   const cargosIniciais = {
@@ -34,14 +40,8 @@ export default function Home() {
   const [setorFiltro, setSetorFiltro] = useState('');
   
   const [tabelaHE, setTabelaHE] = useState(cargosIniciais);
-  const [pessoas, setPessoas] = useState([
-    { id: 1, nome: 'João Silva', cargo: 'AJUDANTE GERAL', setor: 'Inbound' },
-    { id: 2, nome: 'Maria Santos', cargo: 'CONFERENTE JR', setor: 'Outbound' }
-  ]);
-  const [lançamentos, setLançamentos] = useState([
-    { id: 1, pessoaId: 1, tipo: 'he-60', data: '2024-01-15', horas: 2, minutos: 0, descricao: 'Sábado' },
-    { id: 2, pessoaId: 2, tipo: 'atraso', data: '2024-01-16', horas: 0, minutos: 30, descricao: 'Atraso 30 min' }
-  ]);
+  const [pessoas, setPessoas] = useState([]);
+  const [lançamentos, setLançamentos] = useState([]);
 
   const [formPessoa, setFormPessoa] = useState({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
   const [formCargo, setFormCargo] = useState({ nome: '', he60: '', he100: '' });
@@ -56,39 +56,83 @@ export default function Home() {
 
   const cargosArray = Object.keys(tabelaHE);
 
+  // Carregar dados do Supabase
   useEffect(() => {
-    const savedTabelaHE = localStorage.getItem('daxia_tabelaHE');
-    const savedPessoas = localStorage.getItem('daxia_pessoas');
-    const savedLançamentos = localStorage.getItem('daxia_lançamentos');
+    const loadData = async () => {
+      try {
+        // Carregar pessoas
+        const { data: pessoasData } = await supabase.from('pessoas').select('*');
+        if (pessoasData) setPessoas(pessoasData);
 
-    if (savedTabelaHE) setTabelaHE(JSON.parse(savedTabelaHE));
-    if (savedPessoas) setPessoas(JSON.parse(savedPessoas));
-    if (savedLançamentos) setLançamentos(JSON.parse(savedLançamentos));
+        // Carregar lançamentos
+        const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
+        if (lancamentosData) setLançamentos(lancamentosData);
 
-    setIsHydrated(true);
+        // Carregar tabela HE
+        const { data: heData } = await supabase.from('tabela_he').select('*');
+        if (heData && heData.length > 0) {
+          const heObj = {};
+          heData.forEach(item => {
+            heObj[item.cargo] = { he60: item.he60, he100: item.he100 };
+          });
+          setTabelaHE({ ...cargosIniciais, ...heObj });
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      }
+      setIsHydrated(true);
+    };
+
+    loadData();
   }, []);
 
+  // Subscribe to real-time changes
   useEffect(() => {
     if (!isHydrated) return;
-    localStorage.setItem('daxia_tabelaHE', JSON.stringify(tabelaHE));
-  }, [tabelaHE, isHydrated]);
 
-  useEffect(() => {
-    if (!isHydrated) return;
-    localStorage.setItem('daxia_pessoas', JSON.stringify(pessoas));
-  }, [pessoas, isHydrated]);
+    const pessoasSubscription = supabase
+      .channel('pessoas-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pessoas' }, payload => {
+        setPessoas(prev => {
+          const updated = [...prev];
+          if (payload.eventType === 'DELETE') {
+            return updated.filter(p => p.id !== payload.old.id);
+          } else if (payload.eventType === 'INSERT') {
+            return [...updated, payload.new];
+          } else {
+            return updated.map(p => p.id === payload.new.id ? payload.new : p);
+          }
+        });
+      })
+      .subscribe();
 
-  useEffect(() => {
-    if (!isHydrated) return;
-    localStorage.setItem('daxia_lançamentos', JSON.stringify(lançamentos));
-  }, [lançamentos, isHydrated]);
+    const lancamentosSubscription = supabase
+      .channel('lancamentos-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, payload => {
+        setLançamentos(prev => {
+          if (payload.eventType === 'DELETE') {
+            return prev.filter(l => l.id !== payload.old.id);
+          } else if (payload.eventType === 'INSERT') {
+            return [...prev, payload.new];
+          } else {
+            return prev.map(l => l.id === payload.new.id ? payload.new : l);
+          }
+        });
+      })
+      .subscribe();
+
+    return () => {
+      pessoasSubscription.unsubscribe();
+      lancamentosSubscription.unsubscribe();
+    };
+  }, [isHydrated]);
 
   const lançamentosFiltrados = useMemo(() => {
     return lançamentos.filter(l => {
       const dentroData = l.data >= dataInicio && l.data <= dataFim;
       if (!dentroData) return false;
       if (setorFiltro === '') return true;
-      const pessoa = pessoas.find(p => p.id === l.pessoaId);
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
       return pessoa?.setor === setorFiltro;
     });
   }, [lançamentos, dataInicio, dataFim, setorFiltro, pessoas]);
@@ -113,7 +157,7 @@ export default function Home() {
       .filter(l => l.tipo.includes('he'))
       .forEach(l => {
         if (!dados[l.data]) dados[l.data] = 0;
-        const pessoa = pessoas.find(p => p.id === l.pessoaId);
+        const pessoa = pessoas.find(p => p.id === l.pessoa_id);
         const tabela = tabelaHE[pessoa?.cargo];
         const valor = l.tipo === 'he-60' 
           ? (tabela?.he60 || 0) * l.horas 
@@ -188,7 +232,7 @@ export default function Home() {
     return lançamentosFiltrados
       .filter(l => l.tipo.includes('he'))
       .reduce((acc, l) => {
-        const pessoa = pessoas.find(p => p.id === l.pessoaId);
+        const pessoa = pessoas.find(p => p.id === l.pessoa_id);
         const tabela = tabelaHE[pessoa?.cargo];
         const valor = l.tipo === 'he-60' 
           ? (tabela?.he60 || 0) * l.horas 
@@ -200,15 +244,15 @@ export default function Home() {
   const topHEPessoas = useMemo(() => {
     const dados = {};
     lançamentosFiltrados.filter(l => l.tipo.includes('he')).forEach(l => {
-      const pessoa = pessoas.find(p => p.id === l.pessoaId);
-      if (!dados[l.pessoaId]) {
-        dados[l.pessoaId] = { nome: pessoa?.nome, valor: 0 };
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+      if (!dados[l.pessoa_id]) {
+        dados[l.pessoa_id] = { nome: pessoa?.nome, valor: 0 };
       }
       const tabela = tabelaHE[pessoa?.cargo];
       const valor = l.tipo === 'he-60' 
         ? (tabela?.he60 || 0) * l.horas 
         : (tabela?.he100 || 0) * l.horas;
-      dados[l.pessoaId].valor += valor;
+      dados[l.pessoa_id].valor += valor;
     });
     return Object.values(dados).sort((a, b) => b.valor - a.valor).slice(0, 10);
   }, [lançamentosFiltrados, pessoas, tabelaHE]);
@@ -219,12 +263,12 @@ export default function Home() {
       dados[p.id] = { nome: p.nome, valor: 0 };
     });
     lançamentosFiltrados.filter(l => l.tipo.includes('he')).forEach(l => {
-      const pessoa = pessoas.find(p => p.id === l.pessoaId);
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
       const tabela = tabelaHE[pessoa?.cargo];
       const valor = l.tipo === 'he-60' 
         ? (tabela?.he60 || 0) * l.horas 
         : (tabela?.he100 || 0) * l.horas;
-      dados[l.pessoaId].valor += valor;
+      dados[l.pessoa_id].valor += valor;
     });
     return Object.values(dados).sort((a, b) => a.valor - b.valor).slice(0, 10);
   }, [lançamentosFiltrados, pessoas, tabelaHE]);
@@ -236,13 +280,13 @@ export default function Home() {
     });
     lançamentosFiltrados.forEach(l => {
       if (l.tipo === 'falta-total' || l.tipo === 'atestado') {
-        dados[l.pessoaId].valor += horasUteisDia;
+        dados[l.pessoa_id].valor += horasUteisDia;
       } else if (l.tipo === 'atestado-horas') {
-        dados[l.pessoaId].valor += l.horas || horasUteisDia;
+        dados[l.pessoa_id].valor += l.horas || horasUteisDia;
       } else if (l.tipo === 'atraso' && l.minutos > 10) {
-        dados[l.pessoaId].valor += l.minutos / 60;
+        dados[l.pessoa_id].valor += l.minutos / 60;
       } else if (l.tipo === 'saida-antecipada') {
-        dados[l.pessoaId].valor += l.horas || horasUteisDia;
+        dados[l.pessoa_id].valor += l.horas || horasUteisDia;
       }
     });
     return Object.values(dados).sort((a, b) => b.valor - a.valor).slice(0, 10);
@@ -255,13 +299,13 @@ export default function Home() {
     });
     lançamentosFiltrados.forEach(l => {
       if (l.tipo === 'falta-total' || l.tipo === 'atestado') {
-        dados[l.pessoaId].valor += horasUteisDia;
+        dados[l.pessoa_id].valor += horasUteisDia;
       } else if (l.tipo === 'atestado-horas') {
-        dados[l.pessoaId].valor += l.horas || horasUteisDia;
+        dados[l.pessoa_id].valor += l.horas || horasUteisDia;
       } else if (l.tipo === 'atraso' && l.minutos > 10) {
-        dados[l.pessoaId].valor += l.minutos / 60;
+        dados[l.pessoa_id].valor += l.minutos / 60;
       } else if (l.tipo === 'saida-antecipada') {
-        dados[l.pessoaId].valor += l.horas || horasUteisDia;
+        dados[l.pessoa_id].valor += l.horas || horasUteisDia;
       }
     });
     return Object.values(dados).sort((a, b) => a.valor - b.valor).slice(0, 10);
@@ -286,18 +330,22 @@ export default function Home() {
   const totalHE = calcularHETotal();
   const insights = gerarInsights();
 
-  const handleAdicionarPessoa = (e) => {
+  const handleAdicionarPessoa = async (e) => {
     e.preventDefault();
     if (!formPessoa.nome || formPessoa.nome.trim() === '') {
       alert('Preencha o nome!');
       return;
     }
-    const novaId = Math.max(...pessoas.map(p => p.id), 0) + 1;
-    setPessoas([...pessoas, { id: novaId, ...formPessoa }]);
-    setFormPessoa({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
+
+    const { error } = await supabase.from('pessoas').insert([formPessoa]);
+    if (error) {
+      alert('Erro ao adicionar pessoa: ' + error.message);
+    } else {
+      setFormPessoa({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
+    }
   };
 
-  const handleAdicionarCargo = (e) => {
+  const handleAdicionarCargo = async (e) => {
     e.preventDefault();
     if (!formCargo.nome || formCargo.nome.trim() === '') {
       alert('Preencha o nome do cargo!');
@@ -315,49 +363,62 @@ export default function Home() {
       return;
     }
 
-    setTabelaHE({
-      ...tabelaHE,
-      [nomeCargo]: {
+    const { error } = await supabase.from('tabela_he').insert([
+      {
+        cargo: nomeCargo,
         he60: parseFloat(formCargo.he60),
         he100: parseFloat(formCargo.he100)
       }
-    });
+    ]);
 
-    setFormCargo({ nome: '', he60: '', he100: '' });
-    alert('✅ Cargo adicionado com sucesso!');
+    if (error) {
+      alert('Erro ao adicionar cargo: ' + error.message);
+    } else {
+      setTabelaHE({
+        ...tabelaHE,
+        [nomeCargo]: {
+          he60: parseFloat(formCargo.he60),
+          he100: parseFloat(formCargo.he100)
+        }
+      });
+      setFormCargo({ nome: '', he60: '', he100: '' });
+      alert('✅ Cargo adicionado com sucesso!');
+    }
   };
 
-  const handleDeletarCargo = (nomeCargo) => {
+  const handleDeletarCargo = async (nomeCargo) => {
     if (pessoas.some(p => p.cargo === nomeCargo)) {
       alert('❌ Não é possível deletar! Existem pessoas cadastradas com este cargo.');
       return;
     }
 
     if (confirm(`Tem certeza que quer deletar o cargo "${nomeCargo}"?`)) {
-      const novaTabela = { ...tabelaHE };
-      delete novaTabela[nomeCargo];
-      setTabelaHE(novaTabela);
-      alert('✅ Cargo deletado com sucesso!');
+      const { error } = await supabase.from('tabela_he').delete().eq('cargo', nomeCargo);
+      if (error) {
+        alert('Erro: ' + error.message);
+      } else {
+        const novaTabela = { ...tabelaHE };
+        delete novaTabela[nomeCargo];
+        setTabelaHE(novaTabela);
+        alert('✅ Cargo deletado com sucesso!');
+      }
     }
   };
 
-  const handleAdicionarLançamento = (e) => {
+  const handleAdicionarLançamento = async (e) => {
     e.preventDefault();
     if (!formLançamento.data) {
       alert('Selecione uma data!');
       return;
     }
 
-    const novaId = Math.max(...lançamentos.map(l => l.id), 0) + 1;
-    
     let horas = formLançamento.horas;
     if (formLançamento.tipo === 'falta-total' || formLançamento.tipo === 'atestado') {
       horas = horasUteisDia;
     }
 
     const novoLançamento = {
-      id: novaId,
-      pessoaId: parseInt(formLançamento.pessoaId),
+      pessoa_id: parseInt(formLançamento.pessoaId),
       tipo: formLançamento.tipo,
       data: formLançamento.data,
       horas: (formLançamento.tipo === 'he-60' || formLançamento.tipo === 'he-100' || formLançamento.tipo === 'atestado-horas' || formLançamento.tipo === 'saida-antecipada')
@@ -367,30 +428,40 @@ export default function Home() {
       descricao: formLançamento.descricao
     };
 
-    setLançamentos([...lançamentos, novoLançamento]);
-    setFormLançamento({ 
-      pessoaId: pessoas[0]?.id || 1, 
-      tipo: 'he-60', 
-      data: '', 
-      horas: 0, 
-      minutos: 0, 
-      descricao: '' 
-    });
-  };
-
-  const handleDeletarPessoa = (id) => {
-    if (confirm('Tem certeza que quer deletar esta pessoa?')) {
-      setPessoas(pessoas.filter(p => p.id !== id));
+    const { error } = await supabase.from('lancamentos').insert([novoLançamento]);
+    if (error) {
+      alert('Erro ao adicionar lançamento: ' + error.message);
+    } else {
+      setFormLançamento({ 
+        pessoaId: pessoas[0]?.id || 1, 
+        tipo: 'he-60', 
+        data: '', 
+        horas: 0, 
+        minutos: 0, 
+        descricao: '' 
+      });
     }
   };
 
-  const handleDeletarLançamento = (id) => {
-    setLançamentos(lançamentos.filter(l => l.id !== id));
+  const handleDeletarPessoa = async (id) => {
+    if (confirm('Tem certeza que quer deletar esta pessoa?')) {
+      const { error } = await supabase.from('pessoas').delete().eq('id', id);
+      if (error) {
+        alert('Erro: ' + error.message);
+      }
+    }
+  };
+
+  const handleDeletarLançamento = async (id) => {
+    const { error } = await supabase.from('lancamentos').delete().eq('id', id);
+    if (error) {
+      alert('Erro: ' + error.message);
+    }
   };
 
   const handleExportarCSV = () => {
     const dados = lançamentos.map(l => {
-      const pessoa = pessoas.find(p => p.id === l.pessoaId);
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
       const tabela = tabelaHE[pessoa?.cargo];
       const valor = l.tipo === 'he-60' 
         ? (tabela?.he60 || 0) * l.horas 
@@ -522,7 +593,7 @@ export default function Home() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
         <div className="text-center">
           <p className="text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
-          <p className="text-gray-600">Aguarde um momento...</p>
+          <p className="text-gray-600">Conectando ao Supabase...</p>
         </div>
       </div>
     );
@@ -535,7 +606,7 @@ export default function Home() {
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
-            <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras</p>
+            <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>
           </div>
           <button
             onClick={handleExportarCSV}
@@ -951,7 +1022,7 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {lançamentos.map((l, index) => {
-                        const pessoa = pessoas.find(p => p.id === l.pessoaId);
+                        const pessoa = pessoas.find(p => p.id === l.pessoa_id);
                         const tabela = tabelaHE[pessoa?.cargo];
                         const valor = l.tipo === 'he-60' 
                           ? (tabela?.he60 || 0) * l.horas 
@@ -961,7 +1032,7 @@ export default function Home() {
                         
                         return (
                           <tr key={l.id} className={`border-b ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50`}>
-                            <td className="py-3 px-3 font-semibold text-gray-800">{getNomePessoa(l.pessoaId)}</td>
+                            <td className="py-3 px-3 font-semibold text-gray-800">{getNomePessoa(l.pessoa_id)}</td>
                             <td className="py-3 px-3 text-xs text-gray-600">{pessoa?.setor}</td>
                             <td className="py-3 px-3">
                               <span className={`px-2 py-1 rounded text-xs font-semibold ${getTipoCor(l.tipo)}`}>
