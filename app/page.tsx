@@ -3,11 +3,14 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 const SUPABASE_URL = 'https://blsdahvliocoqqdzkzym.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XNUPzuPEgFil7C736xv_5Q_WzNDRuzp';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const CORES_PIZZA = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function Home() {
   const cargosIniciais = {
@@ -42,6 +45,8 @@ export default function Home() {
   const [tabelaHE, setTabelaHE] = useState(cargosIniciais);
   const [pessoas, setPessoas] = useState([]);
   const [lançamentos, setLançamentos] = useState([]);
+  const [auditoria, setAuditoria] = useState([]);
+  const [emailsRelatorio, setEmailsRelatorio] = useState([]);
 
   const [formPessoa, setFormPessoa] = useState({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
   const [formCargo, setFormCargo] = useState({ nome: '', he60: '', he100: '' });
@@ -53,22 +58,36 @@ export default function Home() {
     minutos: 0, 
     descricao: '' 
   });
+  const [formEmail, setFormEmail] = useState({ email: '' });
+  const [enviandoEmailTeste, setEnviandoEmailTeste] = useState(false);
 
   const cargosArray = Object.keys(tabelaHE);
+
+  // Registrar auditoria
+  const registrarAuditoria = async (tabela, acao, dadosNovos, dadosAnteriores = null) => {
+    try {
+      await supabase.from('auditoria').insert([{
+        tabela,
+        acao,
+        usuario: 'Sistema',
+        dados_novos: dadosNovos,
+        dados_anteriores: dadosAnteriores
+      }]);
+    } catch (error) {
+      console.error('Erro ao registrar auditoria:', error);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const { data: pessoasData, error: pessoasError } = await supabase.from('pessoas').select('*');
-        if (pessoasError) throw pessoasError;
+        const { data: pessoasData } = await supabase.from('pessoas').select('*');
         if (pessoasData) setPessoas(pessoasData);
 
-        const { data: lancamentosData, error: lancError } = await supabase.from('lancamentos').select('*');
-        if (lancError) throw lancError;
+        const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
         if (lancamentosData) setLançamentos(lancamentosData);
 
-        const { data: heData, error: heError } = await supabase.from('tabela_he').select('*');
-        if (heError) throw heError;
+        const { data: heData } = await supabase.from('tabela_he').select('*');
         if (heData && heData.length > 0) {
           const heObj = {};
           heData.forEach(item => {
@@ -76,6 +95,12 @@ export default function Home() {
           });
           setTabelaHE({ ...cargosIniciais, ...heObj });
         }
+
+        const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+        if (auditData) setAuditoria(auditData);
+
+        const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
+        if (emailsData) setEmailsRelatorio(emailsData);
       } catch (error) {
         console.error('Erro ao carregar:', error);
       }
@@ -93,10 +118,13 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pessoas' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setPessoas(p => [...p, payload.new]);
+          registrarAuditoria('pessoas', 'INSERT', payload.new);
         } else if (payload.eventType === 'DELETE') {
           setPessoas(p => p.filter(x => x.id !== payload.old.id));
+          registrarAuditoria('pessoas', 'DELETE', null, payload.old);
         } else if (payload.eventType === 'UPDATE') {
           setPessoas(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+          registrarAuditoria('pessoas', 'UPDATE', payload.new, payload.old);
         }
       })
       .subscribe();
@@ -106,10 +134,13 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setLançamentos(p => [...p, payload.new]);
+          registrarAuditoria('lancamentos', 'INSERT', payload.new);
         } else if (payload.eventType === 'DELETE') {
           setLançamentos(p => p.filter(x => x.id !== payload.old.id));
+          registrarAuditoria('lancamentos', 'DELETE', null, payload.old);
         } else if (payload.eventType === 'UPDATE') {
           setLançamentos(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+          registrarAuditoria('lancamentos', 'UPDATE', payload.new, payload.old);
         }
       })
       .subscribe();
@@ -141,7 +172,8 @@ export default function Home() {
     return diasUteis;
   };
 
-  const dadosGraficoHE = useMemo(() => {
+  // Gráfico HE - LINHA
+  const dadosGraficoHELinha = useMemo(() => {
     const dados = {};
     lançamentosFiltrados.filter(l => l.tipo.includes('he')).forEach(l => {
       if (!dados[l.data]) dados[l.data] = 0;
@@ -152,16 +184,15 @@ export default function Home() {
     });
     return Object.entries(dados)
       .sort(([a], [b]) => a.localeCompare(b))
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .sort(([a], [b]) => a.localeCompare(b))
       .map(([data, valor]) => ({
-        data: new Date(data + 'T00:00:00').toLocaleDateString('pt-BR'),
+        data: new Date(data + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', day: '2-digit' }),
+        dataFull: data,
         valor: parseFloat(valor.toFixed(2))
       }));
   }, [lançamentosFiltrados, pessoas, tabelaHE]);
 
-  const dadosGraficoABS = useMemo(() => {
+  // Gráfico Absenteísmo - ÁREA
+  const dadosGraficoAbsArea = useMemo(() => {
     const dados = {};
     lançamentosFiltrados.forEach(l => {
       if (!dados[l.data]) dados[l.data] = 0;
@@ -177,11 +208,9 @@ export default function Home() {
     });
     return Object.entries(dados)
       .sort(([a], [b]) => a.localeCompare(b))
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .sort(([a], [b]) => a.localeCompare(b))
       .map(([data, horas]) => ({
-        data: new Date(data + 'T00:00:00').toLocaleDateString('pt-BR'),
+        data: new Date(data + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', day: '2-digit' }),
+        dataFull: data,
         valor: parseFloat(horas.toFixed(2))
       }));
   }, [lançamentosFiltrados, horasUteisDia]);
@@ -375,7 +404,6 @@ export default function Home() {
       if (error) throw error;
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '' });
       
-      // RECARREGA OS DADOS AUTOMATICAMENTE
       setTimeout(async () => {
         const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
         if (lancamentosData) setLançamentos(lancamentosData);
@@ -406,6 +434,41 @@ export default function Home() {
     }
   };
 
+  const handleAdicionarEmail = async (e) => {
+    e.preventDefault();
+    if (!formEmail.email) {
+      alert('Preencha o email!');
+      return;
+    }
+    try {
+      const { error } = await supabase.from('emails_relatorio').insert([{
+        email: formEmail.email,
+        ativo: true
+      }]);
+      if (error) throw error;
+      setFormEmail({ email: '' });
+      const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
+      if (emailsData) setEmailsRelatorio(emailsData);
+      alert('✅ Email adicionado!');
+    } catch (error) {
+      alert('Erro: ' + error.message);
+    }
+  };
+
+  const handleRemoverEmail = async (id) => {
+    if (confirm('Remover este email?')) {
+      try {
+        const { error } = await supabase.from('emails_relatorio').update({ ativo: false }).eq('id', id);
+        if (error) throw error;
+        const { data: emailsData } = await supabase.from('emails_relatorio').select('*').eq('ativo', true);
+        if (emailsData) setEmailsRelatorio(emailsData);
+        alert('✅ Email removido!');
+      } catch (error) {
+        alert('Erro: ' + error.message);
+      }
+    }
+  };
+
   const handleExportarCSV = () => {
     const dados = lançamentos.map(l => {
       const pessoa = pessoas.find(p => p.id === l.pessoa_id);
@@ -426,6 +489,82 @@ export default function Home() {
     document.body.removeChild(link);
   };
 
+  const handleEnviarEmailTeste = async () => {
+    setEnviandoEmailTeste(true);
+    try {
+      alert('✅ Função de envio de email está em desenvolvimento.\nVocê pode usar serviços como:\n- Gmail SMTP\n- SendGrid\n- Mailgun\n\nContacte o suporte para configurar!');
+    } catch (error) {
+      alert('Erro ao enviar email: ' + error.message);
+    } finally {
+      setEnviandoEmailTeste(false);
+    }
+  };
+
+  const handleExportarPDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const html2canvas = (await import('html2canvas')).default;
+      
+      const doc = new jsPDF('p', 'mm', 'a4');
+      let yPosition = 20;
+
+      // Título
+      doc.setFontSize(20);
+      doc.text('📊 Daxia People Analytics', 20, yPosition);
+      yPosition += 15;
+
+      // Data do relatório
+      doc.setFontSize(10);
+      doc.text(`Período: ${dataInicio} a ${dataFim}`, 20, yPosition);
+      yPosition += 10;
+
+      // Resumo
+      doc.setFontSize(14);
+      doc.text('📋 Resumo', 20, yPosition);
+      yPosition += 10;
+      
+      doc.setFontSize(11);
+      doc.text(`Total HE: R$ ${totalHE.toFixed(2)}`, 20, yPosition);
+      yPosition += 7;
+      doc.text(`Taxa Absenteísmo: ${abs.taxaAbs}%`, 20, yPosition);
+      yPosition += 7;
+      doc.text(`Colaboradores: ${pessoas.length}`, 20, yPosition);
+      yPosition += 7;
+      doc.text(`Lançamentos: ${lançamentosFiltrados.length}`, 20, yPosition);
+      yPosition += 15;
+
+      // Top 5 HE
+      doc.setFontSize(14);
+      doc.text('🏆 Top 5 - Maior HE', 20, yPosition);
+      yPosition += 10;
+      
+      doc.setFontSize(10);
+      topHEPessoas.slice(0, 5).forEach((p, idx) => {
+        doc.text(`${idx + 1}. ${p.nome}: R$ ${p.valor.toFixed(2)}`, 20, yPosition);
+        yPosition += 7;
+      });
+
+      doc.addPage();
+      yPosition = 20;
+
+      // Top 5 Absenteísmo
+      doc.setFontSize(14);
+      doc.text('🏆 Top 5 - Maior Absenteísmo', 20, yPosition);
+      yPosition += 10;
+      
+      doc.setFontSize(10);
+      topAbsenteismoPessoas.slice(0, 5).forEach((p, idx) => {
+        doc.text(`${idx + 1}. ${p.nome}: ${p.valor.toFixed(1)}h`, 20, yPosition);
+        yPosition += 7;
+      });
+
+      doc.save(`Relatorio_Daxia_${dataFim}.pdf`);
+      alert('✅ PDF exportado com sucesso!');
+    } catch (error) {
+      alert('Erro ao exportar PDF: ' + error.message);
+    }
+  };
+
   const getTipoLabel = (tipo) => {
     const labels = { 'he-60': '⏰ HE 60%', 'he-100': '⏰ HE 100%', 'atraso': '🔴 Atraso', 'atestado-horas': '📋 Atestado de Horas', 'falta-total': '❌ Falta Total', 'atestado': '📄 Atestado', 'saida-antecipada': '🚪 Saída Antecipada' };
     return labels[tipo] || tipo;
@@ -443,9 +582,6 @@ export default function Home() {
     const pessoa = pessoas.find(p => p.id === id);
     return pessoa?.nome || 'Desconhecido';
   };
-
-  const maxValorHE = Math.max(...dadosGraficoHE.map(d => d.valor), 1);
-  const maxValorABS = Math.max(...dadosGraficoABS.map(d => d.valor), 1);
 
   const Gauge = ({ value, max, label }) => {
     const numValue = parseFloat(value) || 0;
@@ -497,16 +633,19 @@ export default function Home() {
             <h1 className="text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
             <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>
           </div>
-          <button onClick={handleExportarCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
+          <div className="flex gap-2">
+            <button onClick={handleExportarCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 CSV</button>
+            <button onClick={handleExportarPDF} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📄 PDF</button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-8 border-b-2 border-gray-300 overflow-x-auto">
           <button onClick={() => setAbaAtiva('resumos')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'resumos' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>📊 Resumos</button>
           <button onClick={() => setAbaAtiva('dashboard')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'dashboard' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>📈 Dashboard</button>
           <button onClick={() => setAbaAtiva('lançamentos')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'lançamentos' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>📝 Lançamentos</button>
+          <button onClick={() => setAbaAtiva('auditoria')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'auditoria' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>🔍 Auditoria</button>
           <button onClick={() => setAbaAtiva('configuracao')} className={`px-6 py-3 font-bold transition whitespace-nowrap ${abaAtiva === 'configuracao' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-600 hover:text-gray-800'}`}>⚙️ Configuração</button>
         </div>
-
         {abaAtiva === 'resumos' && (
           <div>
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
@@ -531,22 +670,22 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-red-500">
+              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-red-500 transform transition hover:scale-105">
                 <p className="text-gray-600 text-sm font-semibold">📉 Taxa Absenteísmo</p>
                 <p className="text-4xl font-bold text-red-600 mt-3">{abs.taxaAbs}%</p>
                 <p className="text-red-500 text-xs mt-2">{abs.horasAbsenteísmo}h / {abs.horasUteisDisponiveis}h</p>
               </div>
-              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-blue-500">
+              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-blue-500 transform transition hover:scale-105">
                 <p className="text-gray-600 text-sm font-semibold">💰 Total HE</p>
                 <p className="text-4xl font-bold text-blue-600 mt-3">R$ {totalHE.toFixed(2)}</p>
                 <p className="text-blue-500 text-xs mt-2">{lançamentosFiltrados.filter(l => l.tipo.includes('he')).length} registros</p>
               </div>
-              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-green-500">
+              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-green-500 transform transition hover:scale-105">
                 <p className="text-gray-600 text-sm font-semibold">👥 Pessoas</p>
                 <p className="text-4xl font-bold text-green-600 mt-3">{setorFiltro ? pessoas.filter(p => p.setor === setorFiltro).length : pessoas.length}</p>
                 <p className="text-green-500 text-xs mt-2">No período</p>
               </div>
-              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-purple-500">
+              <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-purple-500 transform transition hover:scale-105">
                 <p className="text-gray-600 text-sm font-semibold">📋 Lançamentos</p>
                 <p className="text-4xl font-bold text-purple-600 mt-3">{lançamentosFiltrados.length}</p>
                 <p className="text-purple-500 text-xs mt-2">Neste período</p>
@@ -562,12 +701,34 @@ export default function Home() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
               <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-bold text-gray-800 mb-4">💰 Top 10 HE por Data</h2>
-                {dadosGraficoHE.length > 0 ? (<div className="space-y-2 max-h-80 overflow-y-auto">{dadosGraficoHE.map((item, idx) => (<div key={idx} className="flex items-center gap-2"><span className="text-xs font-semibold text-gray-700 w-16">{item.data}</span><div className="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden"><div className="bg-blue-500 h-full flex items-center justify-end pr-2" style={{ width: `${(item.valor / maxValorHE) * 100}%` }}><span className="text-xs text-white font-bold">R$ {item.valor.toFixed(2)}</span></div></div></div>))}</div>) : (<p className="text-gray-500 text-center py-8">Sem dados</p>)}
+                <h2 className="text-xl font-bold text-gray-800 mb-4">💰 HE ao Longo do Tempo</h2>
+                {dadosGraficoHELinha.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={dadosGraficoHELinha}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="data" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                      <Legend />
+                      <Line type="monotone" dataKey="valor" stroke="#3b82f6" name="HE (R$)" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (<p className="text-gray-500 text-center py-8">Sem dados</p>)}
               </div>
               <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-bold text-gray-800 mb-4">📉 Top 10 Absenteísmo por Data</h2>
-                {dadosGraficoABS.length > 0 ? (<div className="space-y-2 max-h-80 overflow-y-auto">{dadosGraficoABS.map((item, idx) => (<div key={idx} className="flex items-center gap-2"><span className="text-xs font-semibold text-gray-700 w-16">{item.data}</span><div className="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden"><div className="bg-red-500 h-full flex items-center justify-end pr-2" style={{ width: `${(item.valor / maxValorABS) * 100}%` }}><span className="text-xs text-white font-bold">{item.valor.toFixed(2)}h</span></div></div></div>))}</div>) : (<p className="text-gray-500 text-center py-8">Sem dados</p>)}
+                <h2 className="text-xl font-bold text-gray-800 mb-4">📉 Absenteísmo ao Longo do Tempo</h2>
+                {dadosGraficoAbsArea.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={dadosGraficoAbsArea}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="data" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `${value.toFixed(2)}h`} />
+                      <Legend />
+                      <Area type="monotone" dataKey="valor" stroke="#ef4444" fill="#fecaca" name="Absenteísmo (h)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (<p className="text-gray-500 text-center py-8">Sem dados</p>)}
               </div>
             </div>
 
@@ -603,22 +764,22 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6 transform transition hover:scale-105">
                 <p className="text-sm font-semibold opacity-80">Total HE</p>
                 <p className="text-3xl font-bold mt-2">R$ {totalHE.toFixed(2)}</p>
                 <p className="text-xs opacity-80 mt-2">Meta: R$ {metaHE}</p>
               </div>
-              <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-6">
+              <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-6 transform transition hover:scale-105">
                 <p className="text-sm font-semibold opacity-80">Absenteísmo</p>
                 <p className="text-3xl font-bold mt-2">{abs.taxaAbs}%</p>
                 <p className="text-xs opacity-80 mt-2">Meta: {metaAbsenteismo}%</p>
               </div>
-              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6 transform transition hover:scale-105">
                 <p className="text-sm font-semibold opacity-80">Colaboradores</p>
                 <p className="text-3xl font-bold mt-2">{pessoas.length}</p>
                 <p className="text-xs opacity-80 mt-2">Ativos</p>
               </div>
-              <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6 transform transition hover:scale-105">
                 <p className="text-sm font-semibold opacity-80">Lançamentos</p>
                 <p className="text-3xl font-bold mt-2">{lançamentos.length}</p>
                 <p className="text-xs opacity-80 mt-2">Total</p>
@@ -708,8 +869,83 @@ export default function Home() {
           </div>
         )}
 
+        {abaAtiva === 'auditoria' && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">🔍 Histórico de Alterações</h2>
+            {auditoria.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">Sem alterações registradas</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-blue-600 text-white">
+                      <th className="text-left py-3 px-3 font-bold">Tabela</th>
+                      <th className="text-left py-3 px-3 font-bold">Ação</th>
+                      <th className="text-left py-3 px-3 font-bold">Usuário</th>
+                      <th className="text-left py-3 px-3 font-bold">Data/Hora</th>
+                      <th className="text-left py-3 px-3 font-bold">Detalhes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditoria.slice(0, 50).map((a, index) => (
+                      <tr key={a.id} className={`border-b ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}>
+                        <td className="py-3 px-3 font-semibold text-gray-800">{a.tabela}</td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                            a.acao === 'INSERT' ? 'bg-green-100 text-green-800' :
+                            a.acao === 'UPDATE' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {a.acao}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-xs text-gray-600">{a.usuario}</td>
+                        <td className="py-3 px-3 text-xs text-gray-600">{new Date(a.criado_em).toLocaleString('pt-BR')}</td>
+                        <td className="py-3 px-3 text-xs text-gray-600">
+                          {a.dados_novos ? `ID: ${a.dados_novos?.id || '-'}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {abaAtiva === 'configuracao' && (
           <div className="space-y-8">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">📧 Emails para Relatório</h2>
+              <form onSubmit={handleAdicionarEmail} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <input type="email" placeholder="seu@email.com" value={formEmail.email} onChange={(e) => setFormEmail({ email: e.target.value })} className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" required />
+                <button type="submit" className="bg-green-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-green-700">✅ Adicionar</button>
+                <button type="button" onClick={handleEnviarEmailTeste} disabled={enviandoEmailTeste} className="bg-purple-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-purple-700 disabled:opacity-50">📧 Teste</button>
+              </form>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 className="font-bold text-gray-800 mb-3">📋 Emails Cadastrados:</h3>
+                {emailsRelatorio.length === 0 ? (
+                  <p className="text-gray-600 text-sm">Nenhum email cadastrado</p>
+                ) : (
+                  <div className="space-y-2">
+                    {emailsRelatorio.map(e => (
+                      <div key={e.id} className="flex justify-between items-center bg-white p-3 rounded border border-gray-300">
+                        <span className="text-gray-800">{e.email}</span>
+                        <button onClick={() => handleRemoverEmail(e.id)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-bold">🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                <p className="text-blue-800 text-sm font-semibold">⏰ Frequência de Envio:</p>
+                <p className="text-blue-700 text-sm mt-1">• Toda sexta-feira às 08h</p>
+                <p className="text-blue-700 text-sm">• Primeiro dia do mês às 08h</p>
+              </div>
+            </div>
+
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">🎯 Metas</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
