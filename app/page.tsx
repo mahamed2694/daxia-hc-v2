@@ -374,6 +374,13 @@ export default function Home() {
       }]);
       if (error) throw error;
       setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '' });
+      
+      // RECARREGA OS DADOS AUTOMATICAMENTE
+      setTimeout(async () => {
+        const { data: lancamentosData } = await supabase.from('lancamentos').select('*');
+        if (lancamentosData) setLançamentos(lancamentosData);
+      }, 500);
+      
     } catch (error) {
       alert('Erro: ' + error.message);
     }
