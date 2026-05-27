@@ -7,10 +7,75 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 
 const SUPABASE_URL = 'https://blsdahvliocoqqdzkzym.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XNUPzuPEgFil7C736xv_5Q_WzNDRuzp';
+const APP_PASSWORD = 'DAXIATEC465';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    if (passwordInput === APP_PASSWORD) {
+      setIsAuthenticated(true);
+      setPasswordError('');
+    } else {
+      setPasswordError('❌ Senha incorreta! Tente novamente.');
+      setPasswordInput('');
+    }
+  };
+
+  // ===== SE NÃO ESTIVER AUTENTICADO, MOSTRA TELA DE SENHA =====
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-6">
+        <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-blue-600 mb-2">🔐</h1>
+            <h2 className="text-2xl font-bold text-gray-800">Daxia People Analytics</h2>
+            <p className="text-gray-600 mt-2">Acesso Protegido</p>
+          </div>
+
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Digite a Senha de Acesso:
+              </label>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="••••••••••"
+                className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-center text-lg"
+                autoFocus
+              />
+            </div>
+
+            {passwordError && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                <p className="text-red-700 text-sm font-semibold">{passwordError}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200"
+            >
+              🔓 Acessar
+            </button>
+          </form>
+
+          <p className="text-center text-gray-500 text-xs mt-6">
+            Sistema protegido por senha
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== SE ESTIVER AUTENTICADO, MOSTRA O APP NORMAL =====
   const cargosIniciais = {
     'AJUDANTE GERAL': { he60: 18.80, he100: 23.50 },
     'ALMOXARIFE': { he60: 25.90, he100: 32.38 },
@@ -662,25 +727,28 @@ export default function Home() {
             <h1 className="text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
             <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>
           </div>
-          <button onClick={() => {
-            const dados = lançamentos.map(l => {
-              const pessoa = pessoas.find(p => p.id === l.pessoa_id);
-              const tabela = tabelaHE[pessoa?.cargo];
-              const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : l.tipo === 'he-100' ? (tabela?.he100 || 0) * l.horas : 0;
-              return { Pessoa: pessoa?.nome, Setor: pessoa?.setor, Cargo: pessoa?.cargo, Tipo: l.tipo, Data: new Date(l.data + 'T00:00:00').toLocaleDateString('pt-BR'), Horas: l.horas || (l.minutos + ' min'), 'Valor (R$)': valor.toFixed(2) };
-            });
-            const headers = ['Pessoa', 'Setor', 'Cargo', 'Tipo', 'Data', 'Horas', 'Valor (R$)'];
-            const csv = [headers.join(','), ...dados.map(row => headers.map(h => { const v = row[h]; return typeof v === 'string' && v.includes(',') ? `"${v}"` : v; }).join(','))].join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', 'Daxia_Lancamentos.csv');
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
+          <div className="flex gap-2">
+            <button onClick={() => {
+              const dados = lançamentos.map(l => {
+                const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+                const tabela = tabelaHE[pessoa?.cargo];
+                const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : l.tipo === 'he-100' ? (tabela?.he100 || 0) * l.horas : 0;
+                return { Pessoa: pessoa?.nome, Setor: pessoa?.setor, Cargo: pessoa?.cargo, Tipo: l.tipo, Data: new Date(l.data + 'T00:00:00').toLocaleDateString('pt-BR'), Horas: l.horas || (l.minutos + ' min'), 'Valor (R$)': valor.toFixed(2) };
+              });
+              const headers = ['Pessoa', 'Setor', 'Cargo', 'Tipo', 'Data', 'Horas', 'Valor (R$)'];
+              const csv = [headers.join(','), ...dados.map(row => headers.map(h => { const v = row[h]; return typeof v === 'string' && v.includes(',') ? `"${v}"` : v; }).join(','))].join('\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+              const link = document.createElement('a');
+              const url = URL.createObjectURL(blob);
+              link.setAttribute('href', url);
+              link.setAttribute('download', 'Daxia_Lancamentos.csv');
+              link.style.visibility = 'hidden';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
+            <button onClick={() => setIsAuthenticated(false)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold">🔒 Sair</button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-8 border-b-2 border-gray-300 overflow-x-auto">
