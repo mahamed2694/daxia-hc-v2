@@ -125,6 +125,32 @@ function AppContent({ onLogout }) {
   };
 
   const setores = ['Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
+  const feriadosBr = [
+    '01-01', // Ano Novo
+    '02-12', // Carnaval (varia, ajustar conforme ano)
+    '02-13', // Carnaval
+    '03-29', // Sexta-feira Santa (2024)
+    '04-21', // Tiradentes
+    '05-01', // Dia do Trabalho
+    '06-20', // Corpus Christi (2024, varia)
+    '09-07', // Independência
+    '10-12', // Nossa Senhora Aparecida
+    '11-02', // Finados
+    '11-20', // Consciência Negra
+    '12-25'  // Natal
+  ];
+
+  const isFeriado = (data) => {
+    const [ano, mes, dia] = data.split('-');
+    const mesdia = `${mes}-${dia}`;
+    return feriadosBr.includes(mesdia);
+  };
+
+  const getDiaSemana = (data) => {
+    const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const d = new Date(data + 'T00:00:00');
+    return dias[d.getDay()];
+  };
   const VALOR_BONUS = 100;
 
   const [isHydrated, setIsHydrated] = useState(false);
@@ -458,24 +484,206 @@ function AppContent({ onLogout }) {
     return Object.values(dados).sort((a, b) => a.valor - b.valor).slice(0, 10);
   }, [lançamentosFiltrados, horasUteisDia, pessoas]);
 
-  const gerarInsights = () => {
+  const gerarInsightsInteligentes = () => {
     const insights = [];
     const totalHE = calcularHETotal();
     const abs = calcularAbsenteísmo();
-    const finalMes = parseInt(dataFim.split('-')[2]) >= 24;
+
+    if (lançamentosFiltrados.length === 0) {
+      return ['📊 Sem dados no período'];
+    }
+
+    // ===== ANÁLISE POR DIA DA SEMANA =====
+    const hePerDia = {};
+    const absPerDia = {};
     
-    if (totalHE > metaHE * 0.8) insights.push('⚠️ HE acima do esperado');
-    if (abs.taxaAbs > metaAbsenteismo) insights.push('⚠️ Absenteísmo acima da meta');
-    if (finalMes) insights.push('📈 Pico de HE em fechamento de mês');
-    if (totalHE === 0) insights.push('✅ Sem horas extras registradas');
-    if (abs.taxaAbs < metaAbsenteismo * 0.5) insights.push('✅ Absenteísmo controlado');
+    lançamentosFiltrados.forEach(l => {
+      const diaSemana = getDiaSemana(l.data);
+      
+      if (l.tipo.includes('he')) {
+        if (!hePerDia[diaSemana]) hePerDia[diaSemana] = 0;
+        const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+        const tabela = tabelaHE[pessoa?.cargo];
+        const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : (tabela?.he100 || 0) * l.horas;
+        hePerDia[diaSemana] += valor;
+      }
+
+      if (l.tipo === 'falta-total' || l.tipo === 'atestado' || l.tipo === 'atraso' || l.tipo === 'saida-antecipada') {
+        if (!absPerDia[diaSemana]) absPerDia[diaSemana] = 0;
+        if (l.tipo === 'falta-total' || l.tipo === 'atestado') {
+          absPerDia[diaSemana] += horasUteisDia;
+        } else if (l.tipo === 'atraso') {
+          absPerDia[diaSemana] += l.minutos / 60;
+        } else if (l.tipo === 'saida-antecipada') {
+          absPerDia[diaSemana] += l.horas || horasUteisDia;
+        }
+      }
+    });
+
+    // Encontra dia da semana com MAIOR HE
+    if (Object.keys(hePerDia).length > 0) {
+      const diaMaxHE = Object.entries(hePerDia).reduce((a, b) => a[1] > b[1] ? a : b);
+      insights.push(`📈 Maior pico de HE: ${diaMaxHE[0]}s (R$ ${diaMaxHE[1].toFixed(2)})`);
+
+      // Detecta padrão recorrente
+      const diasComHE = Object.keys(hePerDia).length;
+      if (diasComHE <= 2) {
+        const dias = Object.keys(hePerDia).join(' e ');
+        insights.push(`🔄 HE concentrada apenas em ${dias}`);
+      }
+    }
+
+    // ===== ANÁLISE POR COLABORADOR =====
+    const hePerPessoa = {};
+    lançamentosFiltrados.filter(l => l.tipo.includes('he')).forEach(l => {
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+      if (!hePerPessoa[l.pessoa_id]) hePerPessoa[l.pessoa_id] = { nome: pessoa?.nome, valor: 0 };
+      const tabela = tabelaHE[pessoa?.cargo];
+      const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : (tabela?.he100 || 0) * l.horas;
+      hePerPessoa[l.pessoa_id].valor += valor;
+    });
+
+    if (Object.keys(hePerPessoa).length > 0) {
+      const topPessoa = Object.values(hePerPessoa).sort((a, b) => b.valor - a.valor)[0];
+      const percentualTop = (topPessoa.valor / totalHE * 100).toFixed(0);
+      if (percentualTop > 30) {
+        insights.push(`⚠️ ${percentualTop}% da HE está concentrada em ${topPessoa.nome}`);
+      }
+    }
+
+    // ===== ANÁLISE POR CARGO =====
+    const hePerCargo = {};
+    lançamentosFiltrados.filter(l => l.tipo.includes('he')).forEach(l => {
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+      const cargo = pessoa?.cargo;
+      if (!hePerCargo[cargo]) hePerCargo[cargo] = 0;
+      const tabela = tabelaHE[cargo];
+      const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : (tabela?.he100 || 0) * l.horas;
+      hePerCargo[cargo] += valor;
+    });
+
+    if (Object.keys(hePerCargo).length > 0) {
+      const topCargo = Object.entries(hePerCargo).reduce((a, b) => a[1] > b[1] ? a : b);
+      const percentualCargo = (topCargo[1] / totalHE * 100).toFixed(0);
+      if (percentualCargo > 25) {
+        insights.push(`📊 Cargo "${topCargo[0]}" concentra ${percentualCargo}% da HE`);
+      }
+    }
+
+    // ===== ANÁLISE POR SETOR =====
+    const hePerSetor = {};
+    const absPerSetor = {};
     
+    lançamentosFiltrados.forEach(l => {
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+      const setor = pessoa?.setor;
+
+      if (l.tipo.includes('he')) {
+        if (!hePerSetor[setor]) hePerSetor[setor] = 0;
+        const tabela = tabelaHE[pessoa?.cargo];
+        const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : (tabela?.he100 || 0) * l.horas;
+        hePerSetor[setor] += valor;
+      }
+
+      if (l.tipo === 'falta-total' || l.tipo === 'atestado' || l.tipo === 'atraso' || l.tipo === 'saida-antecipada') {
+        if (!absPerSetor[setor]) absPerSetor[setor] = 0;
+        if (l.tipo === 'falta-total' || l.tipo === 'atestado') {
+          absPerSetor[setor] += horasUteisDia;
+        } else if (l.tipo === 'atraso') {
+          absPerSetor[setor] += l.minutos / 60;
+        } else if (l.tipo === 'saida-antecipada') {
+          absPerSetor[setor] += l.horas || horasUteisDia;
+        }
+      }
+    });
+
+    if (Object.keys(hePerSetor).length > 0) {
+      const topSetor = Object.entries(hePerSetor).reduce((a, b) => a[1] > b[1] ? a : b);
+      insights.push(`🏢 Setor "${topSetor[0]}" com maior HE`);
+    }
+
+    if (Object.keys(absPerSetor).length > 0) {
+      const topAbsSetor = Object.entries(absPerSetor).reduce((a, b) => a[1] > b[1] ? a : b);
+      insights.push(`🏢 Setor "${topAbsSetor[0]}" concentra mais absenteísmo`);
+    }
+
+    // ===== ANÁLISE DE ABSENTEÍSMO POR DIA DA SEMANA =====
+    if (Object.keys(absPerDia).length > 0) {
+      const diaMaxAbs = Object.entries(absPerDia).reduce((a, b) => a[1] > b[1] ? a : b);
+      insights.push(`📉 Maior absenteísmo: ${diaMaxAbs[0]}s (${diaMaxAbs[1].toFixed(1)}h)`);
+    }
+
+    // ===== ANÁLISE DE FERIADOS =====
+    let feriadosProximos = 0;
+    let diasAposFeriado = 0;
+    let diasVesperaFeriado = 0;
+
+    lançamentosFiltrados.forEach(l => {
+      if (isFeriado(l.data)) {
+        feriadosProximos++;
+      }
+
+      const dataAnterior = new Date(l.data + 'T00:00:00');
+      dataAnterior.setDate(dataAnterior.getDate() - 1);
+      const dataAnteriorStr = dataAnterior.toISOString().split('T')[0];
+      if (isFeriado(dataAnteriorStr)) {
+        diasVesperaFeriado++;
+      }
+
+      const dataProxima = new Date(l.data + 'T00:00:00');
+      dataProxima.setDate(dataProxima.getDate() + 1);
+      const dataProximaStr = dataProxima.toISOString().split('T')[0];
+      if (isFeriado(dataProximaStr)) {
+        diasAposFeriado++;
+      }
+    });
+
+    if (diasVesperaFeriado > 0 && abs.horasAbsenteísmo > 0) {
+      insights.push(`⚠️ ${diasVesperaFeriado} registros em vésperas de feriado`);
+    }
+
+    if (diasAposFeriado > 0 && abs.horasAbsenteísmo > 0) {
+      insights.push(`⚠️ ${diasAposFeriado} registros no pós-feriado (possível impacto)`);
+    }
+
+    // ===== ANÁLISE DE FINS DE SEMANA =====
+    let sabados = 0;
+    let domingos = 0;
+
+    lançamentosFiltrados.forEach(l => {
+      const dia = getDiaSemana(l.data);
+      if (dia === 'Sábado') sabados++;
+      if (dia === 'Domingo') domingos++;
+    });
+
+    if (sabados > 0) {
+      insights.push(`⚠️ ${sabados} registros em sábados`);
+    }
+    if (domingos > 0) {
+      insights.push(`⚠️ ${domingos} registros em domingos`);
+    }
+
+    // ===== STATUS GERAL =====
+    if (totalHE > metaHE * 0.8) {
+      insights.push('🔴 HE acima de 80% da meta');
+    } else if (totalHE > metaHE * 0.5) {
+      insights.push('🟡 HE dentro do esperado (50-80%)');
+    } else {
+      insights.push('🟢 HE abaixo de 50% da meta');
+    }
+
+    if (abs.taxaAbs > metaAbsenteismo) {
+      insights.push(`🔴 Absenteísmo ${abs.taxaAbs}% (acima da meta de ${metaAbsenteismo}%)`);
+    } else {
+      insights.push(`🟢 Absenteísmo controlado (${abs.taxaAbs}%)`);
+    }
+
     return insights.length > 0 ? insights : ['📊 Análise normal'];
   };
 
   const abs = calcularAbsenteísmo();
   const totalHE = calcularHETotal();
-  const insights = gerarInsights();
+  const insights = gerarInsightsInteligentes();
 
   const handleAdicionarPessoa = async (e) => {
     e.preventDefault();
