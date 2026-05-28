@@ -331,6 +331,8 @@ function AppContent({ onLogout }) {
         if (bonusData) setBonusElegibilidade(bonusData);
 
         setIsHydrated(true);
+        
+        setIsHydrated(true);
       } catch (error) {
         console.error('Erro ao carregar:', error);
         setIsHydrated(true);
@@ -339,10 +341,143 @@ function AppContent({ onLogout }) {
 
     loadData();
     
+    // Recalcular bonus APÓS carregar (fora do try/catch)
     setTimeout(async () => {
       await recalcularBonusComFerias();
     }, 1000);
-  }, []);
+    }, []);
+
+  const handleAdicionarLançamento = async (e) => {
+e.preventDefault();
+    
+    // VALIDAÇÃO: Verificar se pessoa existe
+    const pessoaExiste = pessoas.find(p => p.id === parseInt(formLançamento.pessoaId));
+    if (!pessoaExiste) {
+      alert('❌ Colaborador não encontrado! Verifique se foi deletado.');
+      return;
+    }
+
+    if (!formLançamento.data) {
+      alert('Selecione a data!');
+      return;
+    }
+
+    try {
+      let horas = formLançamento.horas;
+      if (formLançamento.tipo === 'falta-total' || formLançamento.tipo === 'atestado') {
+        horas = horasUteisDia;
+      }
+      const lancamentoData = {
+        pessoa_id: parseInt(formLançamento.pessoaId),
+        tipo: formLançamento.tipo,
+        data: formLançamento.data,
+        horas: ['he-60', 'he-100', 'atestado-horas', 'saida-antecipada'].includes(formLançamento.tipo) ? parseFloat(formLançamento.horas) || 0 : horas,
+        minutos: formLançamento.tipo === 'atraso' ? parseInt(formLançamento.minutos) || 0 : 0,
+        descricao: formLançamento.descricao
+      };
+      const { data, error } = await supabase.from('lancamentos').insert([lancamentoData]).select();
+      if (error) throw error;
+      registrarAuditoria('lancamentos', 'INSERT', data[0]);
+      
+      // Recalcular bonus com férias
+      await recalcularBonusComFerias();
+      
+      const pessoaId = parseInt(formLançamento.pessoaId);
+      if (formLançamento.tipo === 'falta-total') {
+        await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10 && !formLançamento.avisoComunicado) {
+        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'saida-antecipada' && !formLançamento.avisoComunicado) {
+        await desclassificarBonus(pessoaId, `Saída antecipada não comunicada - ${formLançamento.horas}h em ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'advertencia') {
+        await desclassificarBonus(pessoaId, `Advertência registrada em ${formLançamento.data}`);
+      }
+      
+      setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '', avisoComunicado: true });
+      
+    } catch (error) {
+      alert('Erro: ' + error.message);
+    }
+  };
+
+  const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
+    if (!isHydrated) return;
+    try {
+      await supabase.from('auditoria').insert([{
+        tabela,
+        acao,
+        usuario: 'Usuário Sistema',
+        dados_novos: dados,
+        dados_anteriores: detalhes
+      }]);
+      
+      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+      if (auditData) setAuditoria(auditData);
+    } catch (error) {
+      console.error('Erro ao registrar auditoria:', error);
+    }
+  };
+  const desclassificarBonus = async (pessoaId, motivo) => {
+    if (!isHydrated) return;
+    try {
+      const hoje = new Date().toISOString().split('T')[0];
+      
+      const { data: existing } = await supabase
+        .from('bonus_elegibilidade')
+        .select('*')
+        .eq('pessoa_id', pessoaId);
+      
+      if (existing && existing.length > 0) {
+        await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            elegivel: false,
+            data_desclassificacao: hoje,
+            motivo_desclassificacao: motivo
+          })
+          .eq('pessoa_id', pessoaId);
+      } else {
+        await supabase
+          .from('bonus_elegibilidade')
+          .insert([{
+            pessoa_id: pessoaId,
+            elegivel: false,
+            data_desclassificacao: hoje,
+            motivo_desclassificacao: motivo
+          }]);
+      }
+      
+      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+      if (bonusData) setBonusElegibilidade(bonusData);
+    } catch (error) {
+      console.error('Erro ao desclassificar bonus:', error);
+    }
+  };
+
+  const inicializarBonusPessoa = async (pessoaId) => {
+    if (!isHydrated) return;
+    try {
+      const { data: existing } = await supabase
+        .from('bonus_elegibilidade')
+        .select('*')
+        .eq('pessoa_id', pessoaId);
+      
+      if (!existing || existing.length === 0) {
+        await supabase
+          .from('bonus_elegibilidade')
+          .insert([{
+            pessoa_id: pessoaId,
+            elegivel: true,
+            data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
+          }]);
+        
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+      }
+    } catch (error) {
+      console.error('Erro ao inicializar bonus:', error);
+    }
+  };
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -770,13 +905,13 @@ function AppContent({ onLogout }) {
       });
     }
 
-    if (totalHE > metaHE) {
-      insights.push('🔴 META ESTOURADA - HE acima do limite!');
-    } else if (totalHE > metaHE * 0.8) {
-      insights.push('🟡 HE acima de 80% da meta');
-    } else {
-      insights.push('🟢 HE dentro do esperado');
-    }
+   if (totalHE > metaHE) {
+  insights.push('🔴 META ESTOURADA - HE acima do limite!');
+} else if (totalHE > metaHE * 0.8) {
+  insights.push('🟡 HE acima de 80% da meta');
+} else {
+  insights.push('🟢 HE dentro do esperado');
+}
 
     if (abs.taxaAbs > metaAbsenteismo) {
       insights.push(`🔴 Absenteísmo ${abs.taxaAbs}% (acima da meta de ${metaAbsenteismo}%)`);
@@ -853,57 +988,55 @@ function AppContent({ onLogout }) {
       }
     }
   };
+const recalcularBonusComFerias = async () => {
+  try {
+    const { data: todasPessoas } = await supabase.from('pessoas').select('*');
+    const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
 
-  const recalcularBonusComFerias = async () => {
-    try {
-      const { data: todasPessoas } = await supabase.from('pessoas').select('*');
-      const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
-
-      if (allBonus && todasPessoas) {
-        for (const bonus of allBonus) {
-          if (bonus.elegivel && (todasPessoas.find(p => p.id === bonus.pessoa_id)?.ativo ?? true)) {
-            const pessoa = todasPessoas.find(p => p.id === bonus.pessoa_id);
-            
-            const hoje = new Date();
-            const mesAtual = hoje.getMonth();
-            const anoAtual = hoje.getFullYear();
-            const primeiroDia = new Date(anoAtual, mesAtual, 1);
-            const ultimoDia = new Date(anoAtual, mesAtual + 1, 0);
-            
-            let diasUteis = 0;
-            for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
-              if (d.getDay() >= 1 && d.getDay() <= 5) diasUteis++;
-            }
-            
-            let diasFerias = 0;
-            if (pessoa.data_inicio_ferias && pessoa.data_fim_ferias) {
-              const inicio = new Date(pessoa.data_inicio_ferias);
-              const fim = new Date(pessoa.data_fim_ferias);
-              for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
-                if (d.getDay() >= 1 && d.getDay() <= 5) diasFerias++;
-              }
-            }
-            
-            const bonusCalc = (VALOR_BONUS * (diasUteis - diasFerias)) / diasUteis;
-            
-            await supabase
-              .from('bonus_elegibilidade')
-              .update({ valor_calculado: bonusCalc })
-              .eq('id', bonus.id);
+    if (allBonus && todasPessoas) {
+      for (const bonus of allBonus) {
+        if (bonus.elegivel && (todasPessoas.find(p => p.id === bonus.pessoa_id)?.ativo ?? true)) {
+          const pessoa = todasPessoas.find(p => p.id === bonus.pessoa_id);
+          
+          const hoje = new Date();
+          const mesAtual = hoje.getMonth();
+          const anoAtual = hoje.getFullYear();
+          const primeiroDia = new Date(anoAtual, mesAtual, 1);
+          const ultimoDia = new Date(anoAtual, mesAtual + 1, 0);
+          
+          let diasUteis = 0;
+          for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() >= 1 && d.getDay() <= 5) diasUteis++;
           }
+          
+          let diasFerias = 0;
+          if (pessoa.data_inicio_ferias && pessoa.data_fim_ferias) {
+            const inicio = new Date(pessoa.data_inicio_ferias);
+            const fim = new Date(pessoa.data_fim_ferias);
+            for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+              if (d.getDay() >= 1 && d.getDay() <= 5) diasFerias++;
+            }
+          }
+          
+          const bonusCalc = (VALOR_BONUS * (diasUteis - diasFerias)) / diasUteis;
+          
+          await supabase
+            .from('bonus_elegibilidade')
+            .update({ valor_calculado: bonusCalc })
+            .eq('id', bonus.id);
         }
       }
-      
-      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-      if (bonusData) setBonusElegibilidade(bonusData);
-    } catch (error) {
-      console.error('Erro ao recalcular bonus:', error);
     }
-  };
-
+    
+    const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+    if (bonusData) setBonusElegibilidade(bonusData);
+  } catch (error) {
+    console.error('Erro ao recalcular bonus:', error);
+  }
+};
   const handleAdicionarLançamento = async (e) => {
     e.preventDefault();
-    
+      // VALIDAÇÃO: Verificar se pessoa existe
     const pessoaExiste = pessoas.find(p => p.id === parseInt(formLançamento.pessoaId));
     if (!pessoaExiste) {
       alert('❌ Colaborador não encontrado! Verifique se foi deletado.');
@@ -930,8 +1063,8 @@ function AppContent({ onLogout }) {
       if (error) throw error;
       registrarAuditoria('lancamentos', 'INSERT', data[0]);
       
+      // Recalcular bonus com férias
       await recalcularBonusComFerias();
-      
       const pessoaId = parseInt(formLançamento.pessoaId);
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
@@ -947,86 +1080,6 @@ function AppContent({ onLogout }) {
       
     } catch (error) {
       alert('Erro: ' + error.message);
-    }
-  };
-
-  const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
-    if (!isHydrated) return;
-    try {
-      await supabase.from('auditoria').insert([{
-        tabela,
-        acao,
-        usuario: 'Usuário Sistema',
-        dados_novos: dados,
-        dados_anteriores: detalhes
-      }]);
-      
-      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
-      if (auditData) setAuditoria(auditData);
-    } catch (error) {
-      console.error('Erro ao registrar auditoria:', error);
-    }
-  };
-
-  const desclassificarBonus = async (pessoaId, motivo) => {
-    if (!isHydrated) return;
-    try {
-      const hoje = new Date().toISOString().split('T')[0];
-      
-      const { data: existing } = await supabase
-        .from('bonus_elegibilidade')
-        .select('*')
-        .eq('pessoa_id', pessoaId);
-      
-      if (existing && existing.length > 0) {
-        await supabase
-          .from('bonus_elegibilidade')
-          .update({
-            elegivel: false,
-            data_desclassificacao: hoje,
-            motivo_desclassificacao: motivo
-          })
-          .eq('pessoa_id', pessoaId);
-      } else {
-        await supabase
-          .from('bonus_elegibilidade')
-          .insert([{
-            pessoa_id: pessoaId,
-            elegivel: false,
-            data_desclassificacao: hoje,
-            motivo_desclassificacao: motivo
-          }]);
-      }
-      
-      const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-      if (bonusData) setBonusElegibilidade(bonusData);
-    } catch (error) {
-      console.error('Erro ao desclassificar bonus:', error);
-    }
-  };
-
-  const inicializarBonusPessoa = async (pessoaId) => {
-    if (!isHydrated) return;
-    try {
-      const { data: existing } = await supabase
-        .from('bonus_elegibilidade')
-        .select('*')
-        .eq('pessoa_id', pessoaId);
-      
-      if (!existing || existing.length === 0) {
-        await supabase
-          .from('bonus_elegibilidade')
-          .insert([{
-            pessoa_id: pessoaId,
-            elegivel: true,
-            data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
-          }]);
-        
-        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-        if (bonusData) setBonusElegibilidade(bonusData);
-      }
-    } catch (error) {
-      console.error('Erro ao inicializar bonus:', error);
     }
   };
 
@@ -1098,7 +1151,7 @@ function AppContent({ onLogout }) {
     }
   };
 
-  const handleReversaoBonusDesclassificacao = async (pessoaId) => {
+const handleReversaoBonusDesclassificacao = async (pessoaId) => {
     if (confirm('Reverter desclassificação? Pessoa volta a ser elegível?')) {
       try {
         await supabase
@@ -1118,6 +1171,49 @@ function AppContent({ onLogout }) {
       }
     }
   };
+
+  const handleLimparAuditoria = async () => {    const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
+    
+    if (senhaDelete === null) {
+      return;
+    }
+    
+    if (senhaDelete === 'DELETAR2026') {
+      try {
+        const dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - 30);
+        const dataLimiteStr = dataLimite.toISOString().split('T')[0];
+        
+        const { data: toDelete } = await supabase.from('auditoria').select('id').lt('criado_em', dataLimiteStr);
+        
+        if (toDelete && toDelete.length > 0) {
+          for (const item of toDelete) {
+            await supabase.from('auditoria').delete().eq('id', item.id);
+          }
+        }
+        
+        const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+        if (auditData) setAuditoria(auditData);
+        
+        alert('✅ Auditoria de 30+ dias deletada com sucesso!');
+      } catch (error) {
+        alert('❌ Erro ao deletar: ' + error.message);
+      }
+    } else {
+      alert('❌ Senha incorreta! Operação cancelada.');
+    }
+};
+
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
+          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleDeletarPessoa = async (pessoaId) => {
     const pessoa = pessoas.find(p => p.id === pessoaId);
@@ -1162,39 +1258,6 @@ function AppContent({ onLogout }) {
       } catch (error) {
         alert('Erro: ' + error.message);
       }
-    }
-  };
-
-  const handleLimparAuditoria = async () => {
-    const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
-    
-    if (senhaDelete === null) {
-      return;
-    }
-    
-    if (senhaDelete === 'DELETAR2026') {
-      try {
-        const dataLimite = new Date();
-        dataLimite.setDate(dataLimite.getDate() - 30);
-        const dataLimiteStr = dataLimite.toISOString().split('T')[0];
-        
-        const { data: toDelete } = await supabase.from('auditoria').select('id').lt('criado_em', dataLimiteStr);
-        
-        if (toDelete && toDelete.length > 0) {
-          for (const item of toDelete) {
-            await supabase.from('auditoria').delete().eq('id', item.id);
-          }
-        }
-        
-        const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
-        if (auditData) setAuditoria(auditData);
-        
-        alert('✅ Auditoria de 30+ dias deletada com sucesso!');
-      } catch (error) {
-        alert('❌ Erro ao deletar: ' + error.message);
-      }
-    } else {
-      alert('❌ Senha incorreta! Operação cancelada.');
     }
   };
 
@@ -1257,16 +1320,6 @@ function AppContent({ onLogout }) {
     );
   };
 
-  if (!isHydrated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
-          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
@@ -1616,7 +1669,6 @@ function AppContent({ onLogout }) {
             </div>
           </div>
         )}
-
         {abaAtiva === 'auditoria' && (
           <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
             <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">🔍 Histórico de Alterações</h2>
@@ -1696,7 +1748,7 @@ function AppContent({ onLogout }) {
                   <h3 className="text-sm sm:text-xl font-bold text-green-800 mb-3 sm:mb-4">✅ Elegiveis para Bonus</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto text-xs sm:text-sm">
                     {bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).length > 0 ? (
-                      bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).map(bonus => {
+  bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).map(bonus => {
                         const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
                         return (
                           <div key={bonus.id} className="flex justify-between items-start bg-white p-2 sm:p-3 rounded border border-green-300 gap-2">
@@ -1730,7 +1782,7 @@ function AppContent({ onLogout }) {
                   <h3 className="text-sm sm:text-xl font-bold text-red-800 mb-3 sm:mb-4">❌ Desclassificados</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto text-xs sm:text-sm">
                     {bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).length > 0 ? (
-                      bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).map(bonus => {
+  bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).map(bonus => {
                         const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
                         return (
                           <div key={bonus.id} className="bg-white p-2 sm:p-3 rounded border border-red-300 opacity-70">
@@ -1914,7 +1966,7 @@ function AppContent({ onLogout }) {
             </div>
 
             <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
-              <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🎁 Marcar Elegibilidade para Bonus</h2>
+       <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🎁 Marcar Elegibilidade para Bonus</h2>
               <p className="text-gray-600 mb-3 sm:mb-4 text-xs sm:text-sm">Clique para marcar/desmarcar como elegível:</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
                 {pessoas.filter(p => p.ativo ?? true).map(p => {
@@ -1956,8 +2008,7 @@ function AppContent({ onLogout }) {
                 ))}
               </div>
             </div>
-
-            <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 border-l-4 border-red-500">
+<div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 border-l-4 border-red-500">
               <h2 className="text-lg sm:text-2xl font-bold text-red-800 mb-3 sm:mb-4">🗑️ Limpar Auditoria Antiga</h2>
               <p className="text-gray-600 mb-3 sm:mb-4 text-xs sm:text-sm">Deleta registros de auditoria com mais de 30 dias (recomendado fazer 1x/mês):</p>
               <button onClick={handleLimparAuditoria} className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-xs sm:text-sm">🔄 Limpar Dados Antigos</button>
@@ -1981,7 +2032,7 @@ function AppContent({ onLogout }) {
                   try {
                     await supabase.from('pessoas').update({ data_inicio_ferias: inicio, data_fim_ferias: fim }).eq('id', pessoaId);
                     setPessoas(p => p.map(x => x.id === pessoaId ? { ...x, data_inicio_ferias: inicio, data_fim_ferias: fim } : x));
-                    await recalcularBonusComFerias();
+                   await recalcularBonusComFerias();
                     alert('✅ Férias registradas!');
                     try {
                       const pessoaSelect = document.getElementById('feriasPessoa');
