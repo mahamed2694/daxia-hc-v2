@@ -11,67 +11,38 @@ const APP_PASSWORD = 'DAXIATEC465';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function PasswordScreen({ onAuthenticate }) {
-  const [passwordInput, setPasswordInput] = useState('');
-  const [passwordError, setPasswordError] = useState('');
+export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const handlePasswordSubmit = (e) => {
-    e.preventDefault();
-    if (passwordInput === APP_PASSWORD) {
-      onAuthenticate();
-      setPasswordError('');
-    } else {
-      setPasswordError('❌ Senha incorreta! Tente novamente.');
-      setPasswordInput('');
+  // Verificar se já tem autenticação no sessionStorage
+  useEffect(() => {
+    const auth = sessionStorage.getItem('daxia_auth');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
     }
-  };
+    setIsCheckingAuth(false);
+  }, []);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-6">
-      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-blue-600 mb-2">🔐</h1>
-          <h2 className="text-2xl font-bold text-gray-800">Daxia People Analytics</h2>
-          <p className="text-gray-600 mt-2">Acesso Protegido</p>
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-2xl font-bold text-blue-600 mb-4">⏳ Verificando...</p>
         </div>
-
-        <form onSubmit={handlePasswordSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Digite a Senha de Acesso:
-            </label>
-            <input
-              type="password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              placeholder="••••••••••"
-              className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-center text-lg"
-              autoFocus
-            />
-          </div>
-
-          {passwordError && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
-              <p className="text-red-700 text-sm font-semibold">{passwordError}</p>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200"
-          >
-            🔓 Acessar
-          </button>
-        </form>
-
-        <p className="text-center text-gray-500 text-xs mt-6">
-          Sistema protegido por senha
-        </p>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
+  if (!isAuthenticated) {
+    return <PasswordScreen onAuthenticate={() => setIsAuthenticated(true)} />;
+  }
+
+  return <AppContent onLogout={() => {
+    sessionStorage.removeItem('daxia_auth');
+    setIsAuthenticated(false);
+  }} />;
+}
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -644,13 +615,27 @@ function AppContent() {
   const handleResetBonusmensal = async () => {
     if (confirm('⚠️ RESET MENSAL - Todos voltarão a ser elegíveis. Tem certeza?')) {
       try {
-        await supabase
-          .from('bonus_elegibilidade')
-          .update({
-            elegivel: true,
-            data_desclassificacao: null,
-            motivo_desclassificacao: null
-          });
+        const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
+        
+        for (const bonus of allBonus) {
+          await supabase
+            .from('bonus_elegibilidade')
+            .update({
+              elegivel: true,
+              data_desclassificacao: null,
+              motivo_desclassificacao: null
+            })
+            .eq('id', bonus.id);
+        }
+        
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+        alert('✅ Reset mensal realizado! Todos elegíveis novamente.');
+      } catch (error) {
+        alert('Erro: ' + error.message);
+      }
+    }
+  };
         
         const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
         if (bonusData) setBonusElegibilidade(bonusData);
@@ -759,7 +744,7 @@ function AppContent() {
               link.click();
               document.body.removeChild(link);
             }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">📊 Exportar CSV</button>
-            <button onClick={() => setIsAuthenticated(false)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold">🔒 Sair</button>
+            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold">🔒 Sair</button>
           </div>
         </div>
 
