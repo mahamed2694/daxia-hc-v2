@@ -1250,7 +1250,7 @@ const recalcularBonusComFerias = async () => {
                               <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-green-600">R$ {(bonus.valor_bonus ?? VALOR_BONUS).toFixed(2)}
+                              <p className="font-bold text-green-600">R$ {VALOR_BONUS}</p>
                               <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
                             </div>
                           </div>
