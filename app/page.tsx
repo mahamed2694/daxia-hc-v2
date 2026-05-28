@@ -1927,7 +1927,6 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                 }} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-blue-700">📝 Registrar</button>
               </div>
             </div>
- </div>
           </div>
         )}
       </div>
