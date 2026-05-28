@@ -979,30 +979,6 @@ function AppContent({ onLogout }) {
     } else {
       alert('❌ Senha incorreta! Operação cancelada.');
     }
-  };   
-    if (senhaDelete === null) {
-      return;
-    }
-    if (senhaDelete === 'DELETAR2026') {
-      try {
-        // Deletar do bonus primeiro
-        await supabase.from('bonus_elegibilidade').delete().eq('pessoa_id', id);
-        
-        // Depois deletar a pessoa
-        await supabase.from('pessoas').delete().eq('id', id);
-        registrarAuditoria('pessoas', 'DELETE', null, pessoa);
-        
-        // Atualizar tela
-        setPessoas(p => p.filter(x => x.id !== id));
-        setBonusElegibilidade(b => b.filter(x => x.pessoa_id !== id));
-        
-        alert('✅ Colaborador deletado com sucesso!');
-      } catch (error) {
-        alert('❌ Erro ao deletar: ' + error.message);
-      }
-    } else {
-      alert('❌ Senha incorreta! Operação cancelada.');
-    }
   };
 const handleDeletarLançamento = async (id) => {
     const lançamento = lançamentos.find(l => l.id === id);
