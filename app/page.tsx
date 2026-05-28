@@ -1151,7 +1151,7 @@ const recalcularBonusComFerias = async () => {
     }
   };
 
-  const handleReversaoBonusDesclassificacao = async (pessoaId) => {
+const handleReversaoBonusDesclassificacao = async (pessoaId) => {
     if (confirm('Reverter desclassificação? Pessoa volta a ser elegível?')) {
       try {
         await supabase
@@ -1171,10 +1171,8 @@ const recalcularBonusComFerias = async () => {
       }
     }
   };
-};
 
-  const handleLimparAuditoria = async () => {
-    const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
+  const handleLimparAuditoria = async () => {    const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
     
     if (senhaDelete === null) {
       return;
