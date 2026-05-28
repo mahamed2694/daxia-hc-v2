@@ -1947,9 +1947,3 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
     </div>
   );
 }
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
