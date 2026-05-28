@@ -787,8 +787,9 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
     );
   };
 const recalcularBonusComFerias = async () => {
-    for (const pessoa of allPessoas) {
-      const lancamentosPessoa = allLancamentos.filter(
+  try {
+    for (const pessoa of pessoas) {
+      const lancamentosPessoa = lançamentos.filter(
         l => l.pessoa_id === pessoa.id
       );
 
@@ -808,7 +809,6 @@ const recalcularBonusComFerias = async () => {
           d.setDate(d.getDate() + 1)
         ) {
           const diaSemana = d.getDay();
-
           if (diaSemana !== 0 && diaSemana !== 6) {
             diasUteisFerias++;
           }
@@ -824,7 +824,7 @@ const recalcularBonusComFerias = async () => {
         (VALOR_BONUS * proporcao).toFixed(2)
       );
 
-      const bonusAtual = allBonus.find(
+      const bonusAtual = bonusElegibilidade.find(
         b => b.pessoa_id === pessoa.id
       );
 
@@ -832,9 +832,7 @@ const recalcularBonusComFerias = async () => {
         const { error } = await supabase
           .from('bonus_elegibilidade')
           .update({
-            valor_bonus: bonusAtual.elegivel
-              ? valorBonusCalculado
-              : 0
+            valor_bonus: bonusAtual.elegivel ? valorBonusCalculado : 0
           })
           .eq('id', bonusAtual.id);
 
@@ -851,7 +849,13 @@ const recalcularBonusComFerias = async () => {
     if (bonusAtualizado) {
       setBonusElegibilidade(bonusAtualizado);
     }
+
   } catch (error) {
+    console.error('Erro ao recalcular bônus:', error);
+    alert('❌ Erro ao recalcular bônus');
+  }
+};
+  catch (error) {
     console.error('Erro ao recalcular bônus:', error);
     alert('❌ Erro ao recalcular bônus');
   }
