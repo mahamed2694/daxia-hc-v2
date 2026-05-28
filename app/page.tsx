@@ -1222,7 +1222,7 @@ const recalcularBonusComFerias = async () => {
                 <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Elegiveis</p>
                   <p className="text-4xl font-bold mt-2">{bonusElegibilidade.filter(b => b.elegivel).length}</p>
-                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.reduce((acc, b) => acc + (b.valor_bonus || 0), 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Desclassificados</p>
@@ -1231,7 +1231,7 @@ const recalcularBonusComFerias = async () => {
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Valor Total</p>
-                  <p className="text-4xl font-bold mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                  <p className="text-4xl font-bold mt-2"><p className="text-4xl font-bold mt-2">R$ {totalBonus.toFixed(2)}</p>
                   <p className="text-xs opacity-80 mt-2">A pagar</p>
                 </div>
               </div>
