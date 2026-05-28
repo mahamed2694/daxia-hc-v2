@@ -346,8 +346,6 @@ function AppContent({ onLogout }) {
       await recalcularBonusComFerias();
     }, 1000);
     }, []);
-};
-}, []);
 
   const handleAdicionarLançamento = async (e) => {
     e.preventDefault();
