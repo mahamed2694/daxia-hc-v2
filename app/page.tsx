@@ -846,13 +846,13 @@ function AppContent({ onLogout }) {
       });
     }
 
-    if (totalHE > metaHE * 0.8) {
-      insights.push('🔴 HE acima de 80% da meta');
-    } else if (totalHE > metaHE * 0.5) {
-      insights.push('🟡 HE dentro do esperado (50-80%)');
-    } else {
-      insights.push('🟢 HE abaixo de 50% da meta');
-    }
+   if (totalHE > metaHE) {
+  insights.push('🔴 META ESTOURADA - HE acima do limite!');
+} else if (totalHE > metaHE * 0.8) {
+  insights.push('🟡 HE acima de 80% da meta');
+} else {
+  insights.push('🟢 HE dentro do esperado');
+}
 
     if (abs.taxaAbs > metaAbsenteismo) {
       insights.push(`🔴 Absenteísmo ${abs.taxaAbs}% (acima da meta de ${metaAbsenteismo}%)`);
@@ -932,6 +932,12 @@ function AppContent({ onLogout }) {
 
   const handleAdicionarLançamento = async (e) => {
     e.preventDefault();
+      // VALIDAÇÃO: Verificar se pessoa existe
+    const pessoaExiste = pessoas.find(p => p.id === parseInt(formLançamento.pessoaId));
+    if (!pessoaExiste) {
+      alert('❌ Colaborador não encontrado! Verifique se foi deletado.');
+      return;
+    }
     if (!formLançamento.data) {
       alert('Selecione a data!');
       return;
@@ -953,6 +959,50 @@ function AppContent({ onLogout }) {
       if (error) throw error;
       registrarAuditoria('lancamentos', 'INSERT', data[0]);
       
+      // Recalcular bonus com férias para TODOS elegíveis
+      const { data: todasPessoas } = await supabase.from('pessoas').select('*');
+      const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
+
+      if (allBonus && todasPessoas) {
+        for (const bonus of allBonus) {
+          if (bonus.elegivel) {
+            const pessoa = todasPessoas.find(p => p.id === bonus.pessoa_id);
+            if (pessoa && (pessoa.ativo ?? true)) {
+              // Calcular dias trabalhados
+              const hoje = new Date();
+              const mesAtual = hoje.getMonth();
+              const anoAtual = hoje.getFullYear();
+              const primeiroDia = new Date(anoAtual, mesAtual, 1);
+              const ultimoDia = new Date(anoAtual, mesAtual + 1, 0);
+              
+              let diasUteis = 0;
+              for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
+                if (d.getDay() >= 1 && d.getDay() <= 5) diasUteis++;
+              }
+              
+              let diasFerias = 0;
+              if (pessoa.data_inicio_ferias && pessoa.data_fim_ferias) {
+                const inicio = new Date(pessoa.data_inicio_ferias);
+                const fim = new Date(pessoa.data_fim_ferias);
+                for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+                  if (d.getDay() >= 1 && d.getDay() <= 5) diasFerias++;
+                }
+              }
+              
+              const bonusCalc = (VALOR_BONUS * (diasUteis - diasFerias)) / diasUteis;
+              
+              await supabase
+                .from('bonus_elegibilidade')
+                .update({ valor_calculado: bonusCalc })
+                .eq('id', bonus.id);
+            }
+          }
+        }
+        
+        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+        if (bonusData) setBonusElegibilidade(bonusData);
+      }
+      
       const pessoaId = parseInt(formLançamento.pessoaId);
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
@@ -968,45 +1018,6 @@ function AppContent({ onLogout }) {
       
     } catch (error) {
       alert('Erro: ' + error.message);
-    }
-  };
-
-  const handleDeletarPessoa = async (id) => {
-    const pessoa = pessoas.find(p => p.id === id);
-    const senhaDelete = prompt(`⚠️ CUIDADO!\n\nVocê está deletando: ${pessoa?.nome}\n\nDigite a senha de SUPER ADMIN para confirmar:`);
-    
-    if (senhaDelete === null) {
-      return;
-    }
-    if (senhaDelete === 'DELETAR2026') {
-      const motivo = prompt('⚠️ Qual é o motivo da deleção?\n\nExemplos: "Teste", "Desligamento", "Erro de cadastro"');
-      
-      if (motivo === null) {
-        return;
-      }
-
-      try {
-        await supabase.from('bonus_elegibilidade').delete().eq('pessoa_id', id);
-        await supabase.from('pessoas').delete().eq('id', id);
-        
-        await supabase.from('auditoria').insert([{
-          tabela: 'pessoas',
-          acao: 'DELETE',
-          usuario: 'Sistema',
-          nome_usuario: pessoa?.nome,
-          motivo_delecao: motivo,
-          dados_anteriores: pessoa
-        }]);
-        
-        setPessoas(p => p.filter(x => x.id !== id));
-        setBonusElegibilidade(b => b.filter(x => x.pessoa_id !== id));
-        
-        alert('✅ Colaborador deletado com sucesso!');
-      } catch (error) {
-        alert('❌ Erro ao deletar: ' + error.message);
-      }
-    } else {
-      alert('❌ Senha incorreta! Operação cancelada.');
     }
   };
 
@@ -1608,7 +1619,7 @@ function AppContent({ onLogout }) {
                 <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
                   <p className="text-xs sm:text-sm font-semibold opacity-80">Elegiveis</p>
                   <p className="text-2xl sm:text-4xl font-bold mt-2">{bonusElegibilidade.filter(b => b.elegivel).length}</p>
-                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_calculado || VALOR_BONUS), 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
                   <p className="text-xs sm:text-sm font-semibold opacity-80">Desclassificados</p>
@@ -1626,8 +1637,8 @@ function AppContent({ onLogout }) {
                 <div className="bg-green-50 rounded-lg shadow-lg p-4 sm:p-6 border-l-4 border-green-500">
                   <h3 className="text-sm sm:text-xl font-bold text-green-800 mb-3 sm:mb-4">✅ Elegiveis para Bonus</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto text-xs sm:text-sm">
-                    {bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id)).length > 0 ? (
-                      bonusElegibilidade.filter(b => b.elegivel).map(bonus => {
+                    {bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).length > 0 ? (
+  bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).map(bonus => {
                         const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
                         return (
                           <div key={bonus.id} className="flex justify-between items-start bg-white p-2 sm:p-3 rounded border border-green-300 gap-2">
@@ -1660,8 +1671,8 @@ function AppContent({ onLogout }) {
                 <div className="bg-red-50 rounded-lg shadow-lg p-4 sm:p-6 border-l-4 border-red-500">
                   <h3 className="text-sm sm:text-xl font-bold text-red-800 mb-3 sm:mb-4">❌ Desclassificados</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto text-xs sm:text-sm">
-                    {bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id)).length > 0 ? (
-                      bonusElegibilidade.filter(b => !b.elegivel).map(bonus => {
+                    {bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).length > 0 ? (
+  bonusElegibilidade.filter(b => !b.elegivel && pessoas.find(p => p.id === b.pessoa_id && (p.ativo ?? true))).map(bonus => {
                         const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
                         return (
                           <div key={bonus.id} className="bg-white p-2 sm:p-3 rounded border border-red-300 opacity-70">
@@ -1845,10 +1856,10 @@ function AppContent({ onLogout }) {
             </div>
 
             <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
-              <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🎁 Marcar Elegibilidade para Bonus</h2>
+       <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🎁 Marcar Elegibilidade para Bonus</h2>
               <p className="text-gray-600 mb-3 sm:mb-4 text-xs sm:text-sm">Clique para marcar/desmarcar como elegível:</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
-                {pessoas.map(p => {
+                {pessoas.filter(p => p.ativo ?? true).map(p => {
                   const bonus = bonusElegibilidade.find(b => b.pessoa_id === p.id);
                   const elegivel = bonus?.elegivel ?? true;
                   return (
