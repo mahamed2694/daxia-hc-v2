@@ -868,15 +868,22 @@ const recalcularBonusComFerias = async () => {
       await registrarAuditoria('lancamentos', 'INSERT', data?.[0], { pessoa_id: pessoaId, tipo: 'férias' });
       
       await recalcularBonusComFerias();
+      const { data: bonusAtualizado } = await supabase
+  .from('bonus_elegibilidade')
+  .select('*');
+
+if (bonusAtualizado) {
+  setBonusElegibilidade(bonusAtualizado);
+}
       
       const { data: novosDados } = await supabase.from('lancamentos').select('*');
       if (novosDados) setLançamentos(novosDados);
       
       alert('✅ Férias registradas com sucesso!');
       
-      pessoaSelectEl.value = '';
-      inicioInputEl.value = '';
-      fimInputEl.value = '';
+     if (pessoaSelectEl) pessoaSelectEl.value = '';
+if (inicioInputEl) inicioInputEl.value = '';
+if (fimInputEl) fimInputEl.value = '';
       
     } catch (error) {
       alert('❌ Erro ao registrar férias: ' + error.message);
