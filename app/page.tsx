@@ -345,7 +345,9 @@ function AppContent({ onLogout }) {
     setTimeout(async () => {
       await recalcularBonusComFerias();
     }, 1000);
-    };
+    }, []);
+};
+const handleAdicionarLançamento = async (e) => {
 
     loadData();
   }, []);
