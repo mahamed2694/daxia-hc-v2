@@ -556,7 +556,34 @@ function AppContent({ onLogout }) {
     const taxaAbs = horasUteisDisponiveis > 0 ? (horasAbsenteísmo / horasUteisDisponiveis * 100).toFixed(2) : 0;
     return { horasAbsenteísmo: horasAbsenteísmo.toFixed(2), taxaAbs, horasUteisDisponiveis };
   };
-
+const calcularDiasTrabalhados = (pessoa) => {
+    const hoje = new Date();
+    const mesAtual = hoje.getMonth();
+    const anoAtual = hoje.getFullYear();
+    
+    const primeiroDia = new Date(anoAtual, mesAtual, 1);
+    const ultimoDia = new Date(anoAtual, mesAtual + 1, 0);
+    
+    let diasUteis = 0;
+    for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() >= 1 && d.getDay() <= 5) diasUteis++;
+    }
+    
+    let diasFerias = 0;
+    if (pessoa.data_inicio_ferias && pessoa.data_fim_ferias) {
+      const inicio = new Date(pessoa.data_inicio_ferias);
+      const fim = new Date(pessoa.data_fim_ferias);
+      for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() >= 1 && d.getDay() <= 5) diasFerias++;
+      }
+    }
+    
+    return {
+      diasUteis,
+      diasFerias,
+      diasTrabalhados: diasUteis - diasFerias
+    };
+  };
   const calcularHETotal = () => {
     return lançamentosFiltrados.filter(l => l.tipo.includes('he')).reduce((acc, l) => {
       const pessoa = pessoas.find(p => p.id === l.pessoa_id);
@@ -1633,7 +1660,17 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                               <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-green-600">R$ {VALOR_BONUS}</p>
+                              {(() => {
+                                const dias = calcularDiasTrabalhados(pessoa);
+                                const bonusCalc = (VALOR_BONUS * dias.diasTrabalhados) / dias.diasUteis;
+                                return (
+                                  <>
+                                    <p className="font-bold text-green-600">R$ {bonusCalc.toFixed(2)}</p>
+                                    {dias.diasFerias > 0 && <p className="text-xs text-yellow-600">{dias.diasFerias}d férias</p>}
+                                  </>
+                                );
+                              })()}
+                            </div>
                               <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
                             </div>
                           </div>
@@ -1874,6 +1911,42 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                 ))}
               </div>
             </div>
+
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">🏖️ Registrar Férias</h2>
+              <p className="text-gray-600 mb-4">Selecione o colaborador e as datas de férias:</p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <select id="feriasPessoa" className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500">
+                  <option value="">Selecione colaborador...</option>
+                  {pessoas.map(p => (<option key={p.id} value={p.id}>{p.nome}</option>))}
+                </select>
+                <input type="date" id="feriasinicio" className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" />
+                <input type="date" id="feriasfim" className="border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500" />
+                <button onClick={async () => {
+                  const pessoaId = parseInt(document.getElementById('feriasPessoa').value);
+                  const inicio = document.getElementById('feriasinicio').value;
+                  const fim = document.getElementById('feriasfim').value;
+                  if (!pessoaId || !inicio || !fim) { alert('Preencha todos!'); return; }
+                  try {
+                    await supabase.from('pessoas').update({ data_inicio_ferias: inicio, data_fim_ferias: fim }).eq('id', pessoaId);
+                    setPessoas(p => p.map(x => x.id === pessoaId ? { ...x, data_inicio_ferias: inicio, data_fim_ferias: fim } : x));
+                    alert('✅ Férias registradas!');
+                    document.getElementById('feriasPessoa').value = '';
+                    document.getElementById('feriasinicio').value = '';
+                    document.getElementById('feriasfim').value = '';
+                  } catch (error) {
+                    alert('Erro: ' + error.message);
+                  }
+                }} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold hover:bg-blue-700">📝 Registrar</button>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
           </div>
         )}
       </div>
