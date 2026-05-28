@@ -1171,161 +1171,35 @@ const recalcularBonusComFerias = async () => {
       }
     }
   };
-const handleLimparAuditoria = async () => {
-  const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
-  
-  if (senhaDelete === null) {
-    return;
-  }
-  if (senhaDelete === 'DELETAR2026') {
+if (senhaDelete === 'DELETAR2026') {
     try {
       const dataLimite = new Date();
       dataLimite.setDate(dataLimite.getDate() - 30);
       const dataLimiteStr = dataLimite.toISOString().split('T')[0];
       
-      const { error } = await supabase
+      // Deletar via RPC ou fazer select e depois delete
+      const { data: toDelete } = await supabase
         .from('auditoria')
-        .delete()
+        .select('id')
         .lt('criado_em', dataLimiteStr);
       
-      if (error) throw error;
-      
-      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
-      if (auditData) setAuditoria(auditData);
-      
-      alert('✅ Auditoria de 30+ dias deletada com sucesso!');
-    } catch (error) {
-      alert('❌ Erro ao deletar: ' + error.message);
-    }
-  } else {
-    alert('❌ Senha incorreta! Operação cancelada.');
-  }
-};
-  if (senhaDelete === 'DELETAR2026') {
-    try {
-      const dataLimite = new Date();
-      dataLimite.setDate(dataLimite.getDate() - 30);
-      const dataLimiteStr = dataLimite.toISOString().split('T')[0];
-      
-      const { error } = await supabase
-        .from('auditoria')
-        .delete()
-        .lt('criado_em', dataLimiteStr);
-      
-      if (error) throw error;
-      
-      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
-      if (auditData) setAuditoria(auditData);
-      
-      alert('✅ Auditoria de 30+ dias deletada com sucesso!');
-    } catch (error) {
-      alert('❌ Erro ao deletar: ' + error.message);
-    }
-  } else {
-    alert('❌ Senha incorreta! Operação cancelada.');
-  }
-};
-  const handleResetBonusmensal = async () => {
-    if (confirm('⚠️ RESET MENSAL - Todos ATIVOS voltarão a ser elegíveis. Tem certeza?')) {
-      try {
-        const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
-        
-        if (allBonus && allBonus.length > 0) {
-          for (const bonus of allBonus) {
-            const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
-            
-            if (pessoa && pessoa.ativo) {
-              await supabase
-                .from('bonus_elegibilidade')
-                .update({
-                  elegivel: true,
-                  data_desclassificacao: null,
-                  motivo_desclassificacao: null
-                })
-                .eq('id', bonus.id);
-            }
-          }
+      if (toDelete && toDelete.length > 0) {
+        for (const item of toDelete) {
+          await supabase.from('auditoria').delete().eq('id', item.id);
         }
-        
-        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-        if (bonusData) setBonusElegibilidade(bonusData);
-        alert('✅ Reset mensal realizado! Apenas colaboradores ATIVOS foram resetados.');
-      } catch (error) {
-        alert('Erro: ' + error.message);
       }
+      
+      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+      if (auditData) setAuditoria(auditData);
+      
+      alert('✅ Auditoria de 30+ dias deletada com sucesso!');
+    } catch (error) {
+      alert('❌ Erro ao deletar: ' + error.message);
     }
-  };
-
-  const getTipoLabel = (tipo) => {
-    const labels = { 
-      'he-60': '⏰ HE 60%', 
-      'he-100': '⏰ HE 100%', 
-      'atraso': '🔴 Atraso', 
-      'atestado-horas': '📋 Atestado de Horas', 
-      'falta-total': '❌ Falta Total', 
-      'atestado': '📄 Atestado', 
-      'saida-antecipada': '🚪 Saída Antecipada',
-      'advertencia': '⚠️ Advertência'
-    };
-    return labels[tipo] || tipo;
-  };
-
-  const getTipoCor = (tipo) => {
-    if (tipo.includes('he')) return 'bg-blue-100 text-blue-800';
-    if (tipo === 'atraso') return 'bg-orange-100 text-orange-800';
-    if (tipo === 'falta-total' || tipo === 'atestado-horas') return 'bg-red-100 text-red-800';
-    if (tipo === 'atestado' || tipo === 'saida-antecipada') return 'bg-yellow-100 text-yellow-800';
-    if (tipo === 'advertencia') return 'bg-purple-100 text-purple-800';
-    return 'bg-gray-100 text-gray-800';
-  };
-
-  const getNomePessoa = (id) => {
-    const pessoa = pessoas.find(p => p.id === id);
-    return pessoa?.nome || 'Desconhecido';
-  };
-
-  const Gauge = ({ value, max, label }) => {
-    const numValue = parseFloat(value) || 0;
-    const numMax = parseFloat(max) || 1;
-    const percentage = Math.min((numValue / numMax) * 100, 100);
-    let barColor = '#10B981';
-    let textColor = 'text-green-700';
-    let bgColor = 'bg-green-50';
-    if (percentage >= 80) {
-      barColor = '#EF4444';
-      textColor = 'text-red-700';
-      bgColor = 'bg-red-50';
-    } else if (percentage >= 50) {
-      barColor = '#F59E0B';
-      textColor = 'text-yellow-700';
-      bgColor = 'bg-yellow-50';
-    }
-    return (
-      <div className={`flex flex-col items-center gap-2 sm:gap-4 p-3 sm:p-6 rounded-lg ${bgColor}`}>
-        <svg width="100" height="100" viewBox="0 0 120 120" className="sm:w-32 sm:h-32">
-          <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E7EB" strokeWidth="8" />
-          <circle cx="60" cy="60" r="50" fill="none" stroke={barColor} strokeWidth="8" strokeDasharray={`${(percentage / 100) * 314.159} 314.159`} strokeLinecap="round" style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px', transition: 'stroke-dasharray 0.5s ease' }} />
-          <text x="60" y="65" textAnchor="middle" fontSize="24" fontWeight="bold" fill="#111827">{percentage.toFixed(0)}%</text>
-        </svg>
-        <div className="text-center">
-          <p className={`text-sm sm:text-lg font-bold ${textColor}`}>{label}</p>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">{numValue.toFixed(0)} / {numMax.toFixed(0)}</p>
-        </div>
-      </div>
-    );
-  };
-  if (!isHydrated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
-          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
-        </div>
-      </div>
-    );
+  } else {
+    alert('❌ Senha incorreta! Operação cancelada.');
   }
-
-  return (
+};  return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
