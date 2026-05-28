@@ -347,12 +347,24 @@ function AppContent({ onLogout }) {
     }, 1000);
     }, []);
 };
-const handleAdicionarLançamento = async (e) => {
+}, []);
 
-    loadData();
-  }, []);
+  const handleAdicionarLançamento = async (e) => {
+    e.preventDefault();
+    
+    // VALIDAÇÃO: Verificar se pessoa existe
+    const pessoaExiste = pessoas.find(p => p.id === parseInt(formLançamento.pessoaId));
+    if (!pessoaExiste) {
+      alert('❌ Colaborador não encontrado! Verifique se foi deletado.');
+      return;
+    }
 
-  const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
+    if (!formLançamento.data) {
+      alert('Selecione a data!');
+      return;
+    }
+
+    try {
     if (!isHydrated) return;
     try {
       await supabase.from('auditoria').insert([{
