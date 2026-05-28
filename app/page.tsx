@@ -1231,7 +1231,8 @@ const recalcularBonusComFerias = async () => {
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Valor Total</p>
-                  <p className="text-4xl font-bold mt-2"><p className="text-4xl font-bold mt-2">R$ {totalBonus.toFixed(2)}</p>
+                  <p className="text-4xl font-bold mt-2"</p>
+                  <p className="text-4xl font-bold mt-2">R$ {totalBonus.toFixed(2)}</p>
                   <p className="text-xs opacity-80 mt-2">A pagar</p>
                 </div>
               </div>
