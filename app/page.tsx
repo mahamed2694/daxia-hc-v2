@@ -1252,9 +1252,8 @@ const handleLimparAuditoria = async () => {
           <p className="text-xs sm:text-sm text-gray-600 mt-1">{numValue.toFixed(0)} / {numMax.toFixed(0)}</p>
         </div>
       </div>
-    );
-  };
-
+    
+  }, []);
   if (!isHydrated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
