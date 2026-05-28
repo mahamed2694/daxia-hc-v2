@@ -588,12 +588,19 @@ function AppContent({ onLogout }) {
     if (senhaDelete === null) {
       return;
     }
-
     if (senhaDelete === 'DELETAR2026') {
       try {
+        // Deletar do bonus primeiro
+        await supabase.from('bonus_elegibilidade').delete().eq('pessoa_id', id);
+        
+        // Depois deletar a pessoa
         await supabase.from('pessoas').delete().eq('id', id);
         registrarAuditoria('pessoas', 'DELETE', null, pessoa);
+        
+        // Atualizar tela
         setPessoas(p => p.filter(x => x.id !== id));
+        setBonusElegibilidade(b => b.filter(x => x.pessoa_id !== id));
+        
         alert('✅ Colaborador deletado com sucesso!');
       } catch (error) {
         alert('❌ Erro ao deletar: ' + error.message);
@@ -602,7 +609,6 @@ function AppContent({ onLogout }) {
       alert('❌ Senha incorreta! Operação cancelada.');
     }
   };
-
 const handleDeletarLançamento = async (id) => {
     const lançamento = lançamentos.find(l => l.id === id);
     const pessoa = pessoas.find(p => p.id === lançamento.pessoa_id);
@@ -617,7 +623,23 @@ const handleDeletarLançamento = async (id) => {
       }
     }
   };
+const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
+    try {
+      const { error } = await supabase
+        .from('pessoas')
+        .update({ ativo: !ativo })
+        .eq('id', pessoaId);
 
+      if (error) throw error;
+
+      setPessoas(p => p.map(x => x.id === pessoaId ? { ...x, ativo: !ativo } : x));
+
+      alert(`✅ Colaborador ${!ativo ? 'ativado' : 'desativado'}!`);
+    } catch (error) {
+      alert('❌ Erro: ' + error.message);
+    }
+  };
+  
   const handleToggleBonusElegibilidade = async (pessoaId, elegivel) => {
     try {
       const { data: existing } = await supabase
@@ -676,32 +698,36 @@ const handleDeletarLançamento = async (id) => {
   };
 
   const handleResetBonusmensal = async () => {
-    if (confirm('⚠️ RESET MENSAL - Todos voltarão a ser elegíveis. Tem certeza?')) {
+    if (confirm('⚠️ RESET MENSAL - Todos ATIVOS voltarão a ser elegíveis. Tem certeza?')) {
       try {
         const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
         
         if (allBonus && allBonus.length > 0) {
           for (const bonus of allBonus) {
-            await supabase
-              .from('bonus_elegibilidade')
-              .update({
-                elegivel: true,
-                data_desclassificacao: null,
-                motivo_desclassificacao: null
-              })
-              .eq('id', bonus.id);
+            const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+            
+            // Só reseta se a pessoa está ATIVA
+            if (pessoa && pessoa.ativo) {
+              await supabase
+                .from('bonus_elegibilidade')
+                .update({
+                  elegivel: true,
+                  data_desclassificacao: null,
+                  motivo_desclassificacao: null
+                })
+                .eq('id', bonus.id);
+            }
           }
         }
         
         const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
         if (bonusData) setBonusElegibilidade(bonusData);
-        alert('✅ Reset mensal realizado! Todos elegíveis novamente.');
+        alert('✅ Reset mensal realizado! Apenas colaboradores ATIVOS foram resetados.');
       } catch (error) {
         alert('Erro: ' + error.message);
       }
     }
   };
-
   const getTipoLabel = (tipo) => {
     const labels = { 
       'he-60': '⏰ HE 60%', 
@@ -1349,6 +1375,25 @@ const handleDeletarLançamento = async (id) => {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">🔄 Ativar/Desativar Colaboradores</h2>
+              <p className="text-gray-600 mb-4">Inativo não aparece no bônus e não é resetado mensalmente:</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pessoas.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleToggleAtivoColaborador(p.id, p.ativo ?? true)}
+                    className={`p-4 rounded-lg font-bold transition ${
+                      (p.ativo ?? true)
+                        ? 'bg-green-100 text-green-800 border-2 border-green-500'
+                        : 'bg-gray-100 text-gray-800 border-2 border-gray-400'
+                    }`}
+                  >
+                    {(p.ativo ?? true) ? '✅ ATIVO' : '❌ INATIVO'} - {p.nome} ({p.setor})
+                  </button>
+                ))}
               </div>
             </div>
           </div>
