@@ -787,79 +787,49 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
     );
   };
 const recalcularBonusComFerias = async () => {
-  try {
-    for (const pessoa of pessoas) {
-      const lancamentosPessoa = lançamentos.filter(
-        l => l.pessoa_id === pessoa.id
-      );
-
-      const feriasPessoa = lancamentosPessoa.filter(
-        l => l.tipo === 'férias'
-      );
-
-      let diasUteisFerias = 0;
-
-      for (const ferias of feriasPessoa) {
-        const inicio = new Date(ferias.data_inicio || ferias.data);
-        const fim = new Date(ferias.data_fim || ferias.data);
-
-        for (
-          let d = new Date(inicio);
-          d <= fim;
-          d.setDate(d.getDate() + 1)
-        ) {
-          const diaSemana = d.getDay();
-          if (diaSemana !== 0 && diaSemana !== 6) {
-            diasUteisFerias++;
+    try {
+      const { data: allPessoas } = await supabase.from('pessoas').select('*');
+      const { data: allLancamentos } = await supabase.from('lancamentos').select('*');
+      const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
+      
+      if (!allPessoas || !allLancamentos || !allBonus) return;
+      
+      for (const pessoa of allPessoas) {
+        const lancamentosPessoa = allLancamentos.filter(l => l.pessoa_id === pessoa.id);
+        const feriasPessoa = lancamentosPessoa.filter(l => l.tipo === 'férias');
+        
+        if (feriasPessoa.length > 0) {
+          let diasUteisFérias = 0;
+          for (const férias of feriasPessoa) {
+            const inicio = new Date(férias.data_inicio || férias.data);
+            const fim = new Date(férias.data_fim || férias.data);
+            
+            for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+              const dia = d.getDay();
+              if (dia !== 0 && dia !== 6) diasUteisFérias++;
+            }
+          }
+          
+          const diasUteisTotal = 22;
+          const proporção = Math.max(0, (diasUteisTotal - diasUteisFérias) / diasUteisTotal);
+          
+          const bonusAtual = allBonus.find(b => b.pessoa_id === pessoa.id);
+          if (bonusAtual && bonusAtual.elegivel) {
+            const valorBonusOriginal = 100;
+            const valorProporcional = valorBonusOriginal * proporção;
+            
+            await supabase
+              .from('bonus_elegibilidade')
+              .update({ valor_bonus: valorProporcional })
+              .eq('id', bonusAtual.id);
           }
         }
       }
-
-      const proporcao = Math.max(
-        0,
-        (DIAS_UTEIS_MES - diasUteisFerias) / DIAS_UTEIS_MES
-      );
-
-      const valorBonusCalculado = Number(
-        (VALOR_BONUS * proporcao).toFixed(2)
-      );
-
-      const bonusAtual = bonusElegibilidade.find(
-        b => b.pessoa_id === pessoa.id
-      );
-
-      if (bonusAtual) {
-        const { error } = await supabase
-          .from('bonus_elegibilidade')
-          .update({
-            valor_bonus: bonusAtual.elegivel ? valorBonusCalculado : 0
-          })
-          .eq('id', bonusAtual.id);
-
-        if (error) {
-          console.error('Erro ao atualizar bônus:', error);
-        }
-      }
+    } catch (error) {
+      console.error('Erro ao recalcular bônus com férias:', error);
     }
+  };
 
-    const { data: bonusAtualizado } = await supabase
-      .from('bonus_elegibilidade')
-      .select('*');
-
-    if (bonusAtualizado) {
-      setBonusElegibilidade(bonusAtualizado);
-    }
-
-  } catch (error) {
-    console.error('Erro ao recalcular bônus:', error);
-    alert('❌ Erro ao recalcular bônus');
-  }
-};
-  catch (error) {
-    console.error('Erro ao recalcular bônus:', error);
-    alert('❌ Erro ao recalcular bônus');
-  }
-};
   const handleAdicionarFérias = async (e) => {
     e.preventDefault();
     
@@ -1251,8 +1221,8 @@ const recalcularBonusComFerias = async () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Elegiveis</p>
-                  <p className="text-4xl font-bold mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_bonus || VALOR_BONUS), 0).toFixed(2)}</p>
-                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_bonus || VALOR_BONUS), 0).toFixed(2)}</p>
+                  <p className="text-4xl font-bold mt-2">{bonusElegibilidade.filter(b => b.elegivel).length}</p>
+                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
                 </div>
                 <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Desclassificados</p>
@@ -1280,10 +1250,7 @@ const recalcularBonusComFerias = async () => {
                               <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-green-600">R$ {(bonus.valor_bonus || VALOR_BONUS).toFixed(2)}</p>
-                              {(bonus.valor_bonus || VALOR_BONUS) < VALOR_BONUS && (
-    <p className="text-xs text-orange-600 font-semibold mt-1">🏖️ Bonus proporcional por férias</p>
-  )}
+                              <p className="font-bold text-green-600">R$ {VALOR_BONUS}</p>
                               <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
                             </div>
                           </div>
@@ -1553,5 +1520,4 @@ const recalcularBonusComFerias = async () => {
     </div>
   );
 }
-
 
