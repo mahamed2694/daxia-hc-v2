@@ -1231,7 +1231,7 @@ const recalcularBonusComFerias = async () => {
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Valor Total</p>
-                  <p className="text-4xl font-bold mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                  <p className="text-4xl font-bold mt-2"> R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_bonus ?? VALOR_BONUS), 0).toFixed(2)}</p>
                   <p className="text-xs opacity-80 mt-2">A pagar</p>
                 </div>
               </div>
@@ -1241,8 +1241,7 @@ const recalcularBonusComFerias = async () => {
                   <h3 className="text-xl font-bold text-green-800 mb-4">✅ Elegiveis para Bonus</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id)).length > 0 ? (
-                      bonusElegibilidade.filter(b => b.elegivel).map(bonus => {
-                        const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+                      bonusElegibilidade.filter(b => b.elegivel).map(bonus => {const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
                         return (
                           <div key={bonus.id} className="flex justify-between items-center bg-white p-3 rounded border border-green-300">
                             <div>
@@ -1250,7 +1249,9 @@ const recalcularBonusComFerias = async () => {
                               <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-green-600">R$ {VALOR_BONUS}</p>
+                              <p className="font-bold text-green-600">
+  R$ {(bonus.valor_bonus ?? VALOR_BONUS).toFixed(2)}
+</p>
                               <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
                             </div>
                           </div>
@@ -1298,7 +1299,8 @@ const recalcularBonusComFerias = async () => {
                 const hoje = new Date().toLocaleDateString('pt-BR');
                 const elegiveis = bonusElegibilidade.filter(b => b.elegivel);
                 const desclassificados = bonusElegibilidade.filter(b => !b.elegivel);
-                const totalBonus = elegiveis.length * VALOR_BONUS;
+                const totalBonus = elegiveis.reduce((acc, b) => acc + (b.valor_bonus ?? VALOR_BONUS),0
+          );
 
                 let conteudo = `DAXIA PEOPLE ANALYTICS - RELATÓRIO DE BONUS\n`;
                 conteudo += `Data: ${hoje}\n`;
@@ -1316,7 +1318,7 @@ const recalcularBonusComFerias = async () => {
                 conteudo += `-${"-".repeat(60)}\n`;
                 elegiveis.forEach((bonus, idx) => {
                   const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
-                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${VALOR_BONUS}\n`;
+                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${(bonus.valor_bonus ?? VALOR_BONUS).toFixed(2)}\n`;
                 });
 
                 conteudo += `\nCOLABORADORES DESCLASSIFICADOS\n`;
