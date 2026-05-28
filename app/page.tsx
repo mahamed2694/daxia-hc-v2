@@ -1204,8 +1204,20 @@ const recalcularBonusComFerias = async () => {
     } else {
       alert('❌ Senha incorreta! Operação cancelada.');
     }
-  };
-return (
+};
+
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
+          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
