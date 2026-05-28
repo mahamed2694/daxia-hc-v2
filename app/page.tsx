@@ -11,11 +11,72 @@ const APP_PASSWORD = 'DAXIATEC465';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+function PasswordScreen({ onAuthenticate }) {
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    if (passwordInput === APP_PASSWORD) {
+      sessionStorage.setItem('daxia_auth', 'true');
+      onAuthenticate();
+      setPasswordError('');
+    } else {
+      setPasswordError('❌ Senha incorreta! Tente novamente.');
+      setPasswordInput('');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-6">
+      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-blue-600 mb-2">🔐</h1>
+          <h2 className="text-2xl font-bold text-gray-800">Daxia People Analytics</h2>
+          <p className="text-gray-600 mt-2">Acesso Protegido</p>
+        </div>
+
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Digite a Senha de Acesso:
+            </label>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="••••••••••"
+              className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-center text-lg"
+              autoFocus
+            />
+          </div>
+
+          {passwordError && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+              <p className="text-red-700 text-sm font-semibold">{passwordError}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200"
+          >
+            🔓 Acessar
+          </button>
+        </form>
+
+        <p className="text-center text-gray-500 text-xs mt-6">
+          Você será desconectado ao fechar o navegador
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  // Verificar se já tem autenticação no sessionStorage
   useEffect(() => {
     const auth = sessionStorage.getItem('daxia_auth');
     if (auth === 'true') {
@@ -43,17 +104,8 @@ export default function Home() {
     setIsAuthenticated(false);
   }} />;
 }
-export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  if (!isAuthenticated) {
-    return <PasswordScreen onAuthenticate={() => setIsAuthenticated(true)} />;
-  }
-
-  return <AppContent />;
-}
-
-function AppContent() {
+function AppContent({ onLogout }) {
   const cargosIniciais = {
     'AJUDANTE GERAL': { he60: 18.80, he100: 23.50 },
     'ALMOXARIFE': { he60: 25.90, he100: 32.38 },
@@ -104,7 +156,6 @@ function AppContent() {
 
   const cargosArray = Object.keys(tabelaHE);
 
-  // Carregar dados uma única vez
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -139,7 +190,6 @@ function AppContent() {
     loadData();
   }, []);
 
-  // Registrar auditoria
   const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
     if (!isHydrated) return;
     try {
@@ -220,7 +270,6 @@ function AppContent() {
     }
   };
 
-  // Listeners - SEPARADO E LIMPO
   useEffect(() => {
     if (!isHydrated) return;
 
@@ -587,7 +636,6 @@ function AppContent() {
       alert(`✅ ${elegivel ? 'Elegível' : 'Desclassificado'} com sucesso!`);
     } catch (error) {
       alert('Erro: ' + error.message);
-      console.error(error);
     }
   };
 
@@ -617,25 +665,18 @@ function AppContent() {
       try {
         const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
         
-        for (const bonus of allBonus) {
-          await supabase
-            .from('bonus_elegibilidade')
-            .update({
-              elegivel: true,
-              data_desclassificacao: null,
-              motivo_desclassificacao: null
-            })
-            .eq('id', bonus.id);
+        if (allBonus && allBonus.length > 0) {
+          for (const bonus of allBonus) {
+            await supabase
+              .from('bonus_elegibilidade')
+              .update({
+                elegivel: true,
+                data_desclassificacao: null,
+                motivo_desclassificacao: null
+              })
+              .eq('id', bonus.id);
+          }
         }
-        
-        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-        if (bonusData) setBonusElegibilidade(bonusData);
-        alert('✅ Reset mensal realizado! Todos elegíveis novamente.');
-      } catch (error) {
-        alert('Erro: ' + error.message);
-      }
-    }
-  };
         
         const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
         if (bonusData) setBonusElegibilidade(bonusData);
