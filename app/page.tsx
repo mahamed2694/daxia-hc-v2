@@ -1212,17 +1212,6 @@ const handleReversaoBonusDesclassificacao = async (pessoaId) => {
           <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
         </div>
       </div>
-   );
-  };
-
-  if (!isHydrated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
-          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
-        </div>
-      </div>
     );
   }
 
