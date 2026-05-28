@@ -581,25 +581,39 @@ function AppContent({ onLogout }) {
     }
   };
 
-  const handleDeletarPessoa = async (id) => {
+ const handleDeletarPessoa = async (id) => {
     const pessoa = pessoas.find(p => p.id === id);
-    if (confirm('Deletar pessoa?')) {
+    const senhaDelete = prompt(`⚠️ CUIDADO!\n\nVocê está deletando: ${pessoa?.nome}\n\nDigite a senha de SUPER ADMIN para confirmar:`);
+    
+    if (senhaDelete === null) {
+      return;
+    }
+
+    if (senhaDelete === 'DELETAR2026') {
       try {
         await supabase.from('pessoas').delete().eq('id', id);
         registrarAuditoria('pessoas', 'DELETE', null, pessoa);
+        alert('✅ Colaborador deletado com sucesso!');
       } catch (error) {
-        alert('Erro: ' + error.message);
+        alert('❌ Erro ao deletar: ' + error.message);
       }
+    } else {
+      alert('❌ Senha incorreta! Operação cancelada.');
     }
   };
 
-  const handleDeletarLançamento = async (id) => {
+const handleDeletarLançamento = async (id) => {
     const lançamento = lançamentos.find(l => l.id === id);
-    try {
-      await supabase.from('lancamentos').delete().eq('id', id);
-      registrarAuditoria('lancamentos', 'DELETE', null, lançamento);
-    } catch (error) {
-      alert('Erro: ' + error.message);
+    const pessoa = pessoas.find(p => p.id === lançamento.pessoa_id);
+    
+    if (confirm(`Deletar lançamento de ${pessoa?.nome}?\n\nTipo: ${getTipoLabel(lançamento.tipo)}\nData: ${new Date(lançamento.data + 'T00:00:00').toLocaleDateString('pt-BR')}`)) {
+      try {
+        await supabase.from('lancamentos').delete().eq('id', id);
+        registrarAuditoria('lancamentos', 'DELETE', null, lançamento);
+        alert('✅ Lançamento deletado!');
+      } catch (error) {
+        alert('❌ Erro: ' + error.message);
+      }
     }
   };
 
