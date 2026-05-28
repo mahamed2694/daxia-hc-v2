@@ -1390,19 +1390,7 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                         )}
                       </div>
                     </div>
-               
-              const previsao = previsaoBaterMeta();
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                  <div className={`rounded-lg shadow-lg p-4 ${previsao.vaiBaterHE ? 'bg-green-100 border-l-4 border-green-500' : 'bg-orange-100 border-l-4 border-orange-500'}`}>
-                    <p className={`text-sm font-bold ${previsao.vaiBaterHE ? 'text-green-800' : 'text-orange-800'}`}>📈 Previsão HE: {previsao.vaiBaterHE ? '✅ VAI BATER!' : `❌ FALTAM R$ ${previsao.heNecess.toFixed(2)}`}</p>
-                  </div>
-                  <div className={`rounded-lg shadow-lg p-4 ${previsao.vaiBaterAbs ? 'bg-green-100 border-l-4 border-green-500' : 'bg-orange-100 border-l-4 border-orange-500'}`}>
-                    <p className={`text-sm font-bold ${previsao.vaiBaterAbs ? 'text-green-800' : 'text-orange-800'}`}>📉 Previsão Abs: {previsao.vaiBaterAbs ? '✅ VAI BATER!' : `⚠️ DIMINUIR ${previsao.absNecess.toFixed(2)}%`}</p>
-                  </div>
-                </div>
-              );
-            })()}
+              
                   <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
                     <h3 className="text-xl font-bold text-gray-800 mb-4">⚙️ Simulador: Quanto Diminuir Para Bater?</h3>
                     {(() => {
