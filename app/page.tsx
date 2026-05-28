@@ -125,7 +125,6 @@ function AppContent({ onLogout }) {
   };
 
   const setores = ['Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
-  const R$ {(bonus.valor_calculado || VALOR_BONUS).toFixed(2)};
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState('resumos');
