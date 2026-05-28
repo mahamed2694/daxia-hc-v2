@@ -171,6 +171,7 @@ function AppContent({ onLogout }) {
   const [formPessoa, setFormPessoa] = useState({ nome: '', cargo: 'AJUDANTE GERAL', setor: 'Inbound' });
   const [formCargo, setFormCargo] = useState({ nome: '', he60: '', he100: '' });
   const [formLançamento, setFormLançamento] = useState({ 
+    
     pessoaId: 1, 
     tipo: 'he-60', 
     data: '', 
@@ -179,6 +180,145 @@ function AppContent({ onLogout }) {
     descricao: '',
     avisoComunicado: true
   });
+  const calcularDiasUteisFaltando = () => {
+    const hoje = new Date();
+    const fim = new Date(dataFim + 'T23:59:59');
+    const inicio = new Date(dataInicio + 'T00:00:00');
+    
+    let diasUteis = 0;
+    for (let d = new Date(hoje); d <= fim; d.setDate(d.getDate() + 1)) {
+      const diaSemana = d.getDay();
+      if (diaSemana >= 1 && diaSemana <= 5) diasUteis++;
+    }
+    return diasUteis;
+  };
+
+  const previsaoBaterMeta = () => {
+    const diasFaltando = calcularDiasUteisFaltando();
+    const heAtual = calcularHETotal();
+    const heNecess = metaHE - heAtual;
+    const heMediaDia = diasFaltando > 0 ? heNecess / diasFaltando : 0;
+
+    const abs = calcularAbsenteísmo();
+    const absAtual = parseFloat(abs.taxaAbs);
+    const absNecess = metaAbsenteismo - absAtual;
+    const absMediaDia = diasFaltando > 0 ? absNecess / diasFaltando : 0;
+
+    return {
+      heAtual,
+      heNecess,
+      heMediaDia,
+      diasFaltando,
+      absAtual,
+      absNecess,
+      absMediaDia,
+      vaiBaterHE: heAtual >= metaHE,
+      vaiBaterAbs: absAtual <= metaAbsenteismo,
+      urgenciaHE: heMediaDia > 0 ? heMediaDia : 0,
+      urgenciaAbs: absMediaDia < 0 ? Math.abs(absMediaDia) : 0
+    };
+  };
+
+  const quantoDiminuirParaBater = () => {
+    const previsao = previsaoBaterMeta();
+    const lançamentosAtivos = lançamentosFiltrados.filter(l => l.ativo !== false);
+    
+    // Calcular quantos eventos precisam ser removidos
+    const heParaRemover = previsao.heNecess > 0 ? previsao.heNecess : 0;
+    const absParaRemover = previsao.absNecess > 0 ? previsao.absNecess : 0;
+
+    // Contar quantos eventos seriam necessários remover
+    let eventosHERemover = 0;
+    let heAcumulada = 0;
+    
+    const heEvents = lançamentosFiltrados.filter(l => l.tipo.includes('he')).sort((a, b) => 
+      new Date(b.data) - new Date(a.data)
+    );
+
+    for (let evento of heEvents) {
+      if (heAcumulada >= heParaRemover) break;
+      const pessoa = pessoas.find(p => p.id === evento.pessoa_id);
+      const tabela = tabelaHE[pessoa?.cargo];
+      const valor = evento.tipo === 'he-60' ? (tabela?.he60 || 0) * evento.horas : (tabela?.he100 || 0) * evento.horas;
+      heAcumulada += valor;
+      eventosHERemover++;
+    }
+
+    return {
+      eventosHERemover,
+      eventosAbsRemover: absParaRemover > 0 ? Math.ceil(absParaRemover / horasUteisDia) : 0,
+      heParaRemover: Math.max(0, heParaRemover),
+      absParaRemover: Math.max(0, absParaRemover)
+    };
+  };
+
+  const correlacaoVariaveis = () => {
+    const correlacoes = [];
+    
+    const hePerPessoa = {};
+    const absPerPessoa = {};
+    
+    lançamentosFiltrados.forEach(l => {
+      const pessoa = pessoas.find(p => p.id === l.pessoa_id);
+      if (!hePerPessoa[l.pessoa_id]) hePerPessoa[l.pessoa_id] = 0;
+      if (!absPerPessoa[l.pessoa_id]) absPerPessoa[l.pessoa_id] = 0;
+
+      if (l.tipo.includes('he')) {
+        const tabela = tabelaHE[pessoa?.cargo];
+        const valor = l.tipo === 'he-60' ? (tabela?.he60 || 0) * l.horas : (tabela?.he100 || 0) * l.horas;
+        hePerPessoa[l.pessoa_id] += valor;
+      }
+
+      if (l.tipo === 'falta-total' || l.tipo === 'atestado' || l.tipo === 'atraso' || l.tipo === 'saida-antecipada') {
+        if (l.tipo === 'falta-total' || l.tipo === 'atestado') {
+          absPerPessoa[l.pessoa_id] += horasUteisDia;
+        } else {
+          absPerPessoa[l.pessoa_id] += l.horas || l.minutos / 60 || 0;
+        }
+      }
+    });
+
+    const pessoas_ids = Object.keys(hePerPessoa);
+    if (pessoas_ids.length > 2) {
+      const heArray = pessoas_ids.map(id => hePerPessoa[id]);
+      const absArray = pessoas_ids.map(id => absPerPessoa[id]);
+
+      const mediaHE = heArray.reduce((a, b) => a + b, 0) / heArray.length;
+      const mediaAbs = absArray.reduce((a, b) => a + b, 0) / absArray.length;
+
+      let numerador = 0;
+      let denominador1 = 0;
+      let denominador2 = 0;
+
+      for (let i = 0; i < heArray.length; i++) {
+        const diffHE = heArray[i] - mediaHE;
+        const diffAbs = absArray[i] - mediaAbs;
+        numerador += diffHE * diffAbs;
+        denominador1 += diffHE * diffHE;
+        denominador2 += diffAbs * diffAbs;
+      }
+
+      const correlacao = numerador / Math.sqrt(denominador1 * denominador2);
+
+      if (Math.abs(correlacao) > 0.3) {
+        if (correlacao > 0) {
+          correlacoes.push({
+            tipo: 'HE x Absenteísmo',
+            valor: correlacao.toFixed(2),
+            mensagem: `🔗 Correlação POSITIVA (${Math.abs(correlacao * 100).toFixed(0)}%): Quanto MAIOR a HE, MAIOR o absenteísmo`
+          });
+        } else {
+          correlacoes.push({
+            tipo: 'HE x Absenteísmo',
+            valor: correlacao.toFixed(2),
+            mensagem: `🔗 Correlação NEGATIVA (${Math.abs(correlacao * 100).toFixed(0)}%): Quanto MAIOR a HE, MENOR o absenteísmo`
+          });
+        }
+      }
+    }
+
+    return correlacoes;
+  };
 
   const cargosArray = Object.keys(tabelaHE);
 
@@ -663,6 +803,14 @@ function AppContent({ onLogout }) {
       insights.push(`⚠️ ${domingos} registros em domingos`);
     }
 
+    // ===== ADICIONAR CORRELAÇÕES AOS INSIGHTS =====
+    const correlacoes = correlacaoVariaveis();
+    if (correlacoes.length > 0) {
+      correlacoes.forEach(corr => {
+        insights.push(corr.mensagem);
+      });
+    }
+
     // ===== STATUS GERAL =====
     if (totalHE > metaHE * 0.8) {
       insights.push('🔴 HE acima de 80% da meta');
@@ -793,6 +941,45 @@ function AppContent({ onLogout }) {
     const pessoa = pessoas.find(p => p.id === id);
     const senhaDelete = prompt(`⚠️ CUIDADO!\n\nVocê está deletando: ${pessoa?.nome}\n\nDigite a senha de SUPER ADMIN para confirmar:`);
     
+    if (senhaDelete === null) {
+      return;
+    }
+    if (senhaDelete === 'DELETAR2026') {
+      const motivo = prompt('⚠️ Qual é o motivo da deleção?\n\nExemplos: "Teste", "Desligamento", "Erro de cadastro"');
+      
+      if (motivo === null) {
+        return;
+      }
+
+      try {
+        // Deletar do bonus primeiro
+        await supabase.from('bonus_elegibilidade').delete().eq('pessoa_id', id);
+        
+        // Depois deletar a pessoa
+        await supabase.from('pessoas').delete().eq('id', id);
+        
+        // Registrar auditoria com motivo
+        await supabase.from('auditoria').insert([{
+          tabela: 'pessoas',
+          acao: 'DELETE',
+          usuario: 'Sistema',
+          nome_usuario: pessoa?.nome,
+          motivo_delecao: motivo,
+          dados_anteriores: pessoa
+        }]);
+        
+        // Atualizar tela
+        setPessoas(p => p.filter(x => x.id !== id));
+        setBonusElegibilidade(b => b.filter(x => x.pessoa_id !== id));
+        
+        alert('✅ Colaborador deletado com sucesso!');
+      } catch (error) {
+        alert('❌ Erro ao deletar: ' + error.message);
+      }
+    } else {
+      alert('❌ Senha incorreta! Operação cancelada.');
+    }
+  };   
     if (senhaDelete === null) {
       return;
     }
@@ -1007,14 +1194,13 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex justify-between items-center">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
-            <p className="text-gray-600 text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>
-          </div>
-          <div className="flex gap-2">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-blue-600 mb-2">📊 Daxia People Analytics</h1>
+            <p className="text-gray-600 text-sm sm:text-base md:text-lg">Controle de Absenteísmo e Horas Extras | Dados Sincronizados ✅</p>          </div>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <button onClick={() => {
               const dados = lançamentos.map(l => {
                 const pessoa = pessoas.find(p => p.id === l.pessoa_id);
@@ -1158,11 +1344,115 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
 
         {abaAtiva === 'dashboard' && (
           <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-              <div className="bg-white rounded-lg shadow-lg"><Gauge value={totalHE} max={metaHE} label="HE vs Meta" /></div>
-              <div className="bg-white rounded-lg shadow-lg"><Gauge value={abs.taxaAbs} max={metaAbsenteismo} label="Absenteísmo vs Meta" /></div>
-            </div>
+            {(() => {
+              const previsao = previsaoBaterMeta();
+              const correlacoes = correlacaoVariaveis();
+              
+              return (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <div className="bg-white rounded-lg shadow-lg"><Gauge value={totalHE} max={metaHE} label="HE vs Meta" /></div>
+                    <div className="bg-white rounded-lg shadow-lg"><Gauge value={abs.taxaAbs} max={metaAbsenteismo} label="Absenteísmo vs Meta" /></div>
+                  </div>
 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <div className={`rounded-lg shadow-lg p-6 ${previsao.vaiBaterHE ? 'bg-green-50 border-l-4 border-green-500' : 'bg-red-50 border-l-4 border-red-500'}`}>
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">📈 Previsão HE</h3>
+                      <p className={`text-lg font-semibold mb-3 ${previsao.vaiBaterHE ? 'text-green-600' : 'text-red-600'}`}>
+                        {previsao.vaiBaterHE ? '✅ VAI BATER A META!' : '❌ NÃO VAI BATER'}
+                      </p>
+                      <div className="space-y-2 text-sm text-gray-700">
+                        <p>💰 HE Atual: <span className="font-bold">R$ {previsao.heAtual.toFixed(2)}</span></p>
+                        <p>🎯 Meta: <span className="font-bold">R$ {metaHE}</span></p>
+                        <p>📊 Faltam: <span className="font-bold">R$ {Math.max(0, previsao.heNecess).toFixed(2)}</span></p>
+                        <p>⏳ Dias úteis restantes: <span className="font-bold">{previsao.diasFaltando}</span></p>
+                        {previsao.heMediaDia > 0 && (
+                          <p>💡 Precisa de: <span className="font-bold">R$ {previsao.heMediaDia.toFixed(2)}/dia</span></p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={`rounded-lg shadow-lg p-6 ${previsao.vaiBaterAbs ? 'bg-green-50 border-l-4 border-green-500' : 'bg-red-50 border-l-4 border-red-500'}`}>
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">📉 Previsão Absenteísmo</h3>
+                      <p className={`text-lg font-semibold mb-3 ${previsao.vaiBaterAbs ? 'text-green-600' : 'text-red-600'}`}>
+                        {previsao.vaiBaterAbs ? '✅ VAI BATER A META!' : '⚠️ RISCO'}
+                      </p>
+                      <div className="space-y-2 text-sm text-gray-700">
+                        <p>📊 Absenteísmo Atual: <span className="font-bold">{previsao.absAtual.toFixed(2)}%</span></p>
+                        <p>🎯 Meta: <span className="font-bold">{metaAbsenteismo}%</span></p>
+                        <p>⬇️ Precisa diminuir: <span className="font-bold">{Math.max(0, previsao.absNecess).toFixed(2)}%</span></p>
+                        <p>⏳ Dias úteis restantes: <span className="font-bold">{previsao.diasFaltando}</span></p>
+                        {previsao.absMediaDia > 0 && (
+                          <p>💡 Reduzir em: <span className="font-bold">{previsao.absMediaDia.toFixed(2)}%/dia</span></p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+{(() => {
+              const previsao = previsaoBaterMeta();
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                  <div className={`rounded-lg shadow-lg p-4 ${previsao.vaiBaterHE ? 'bg-green-100 border-l-4 border-green-500' : 'bg-orange-100 border-l-4 border-orange-500'}`}>
+                    <p className={`text-sm font-bold ${previsao.vaiBaterHE ? 'text-green-800' : 'text-orange-800'}`}>📈 Previsão HE: {previsao.vaiBaterHE ? '✅ VAI BATER!' : `❌ FALTAM R$ ${previsao.heNecess.toFixed(2)}`}</p>
+                  </div>
+                  <div className={`rounded-lg shadow-lg p-4 ${previsao.vaiBaterAbs ? 'bg-green-100 border-l-4 border-green-500' : 'bg-orange-100 border-l-4 border-orange-500'}`}>
+                    <p className={`text-sm font-bold ${previsao.vaiBaterAbs ? 'text-green-800' : 'text-orange-800'}`}>📉 Previsão Abs: {previsao.vaiBaterAbs ? '✅ VAI BATER!' : `⚠️ DIMINUIR ${previsao.absNecess.toFixed(2)}%`}</p>
+                  </div>
+                </div>
+              );
+            })()}
+                  <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">⚙️ Simulador: Quanto Diminuir Para Bater?</h3>
+                    {(() => {
+                      const diminuir = quantoDiminuirParaBater();
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
+                            <p className="text-sm font-semibold text-gray-600 mb-2">📊 Para Bater Meta de HE:</p>
+                            {diminuir.heParaRemover > 0 ? (
+                              <>
+                                <p className="text-lg font-bold text-blue-600">Remover R$ {diminuir.heParaRemover.toFixed(2)}</p>
+                                <p className="text-xs text-gray-600 mt-2">≈ {diminuir.eventosHERemover} evento(s) de HE</p>
+                                <p className="text-xs text-gray-500 mt-1">Deixe de registrar HE nos últimos {diminuir.eventosHERemover} dia(s)</p>
+                              </>
+                            ) : (
+                              <p className="text-lg font-bold text-green-600">✅ JÁ VAI BATER!</p>
+                            )}
+                          </div>
+
+                          <div className="bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
+                            <p className="text-sm font-semibold text-gray-600 mb-2">📉 Para Bater Meta de Absenteísmo:</p>
+                            {diminuir.absParaRemover > 0 ? (
+                              <>
+                                <p className="text-lg font-bold text-red-600">Remover {diminuir.absParaRemover.toFixed(2)}h</p>
+                                <p className="text-xs text-gray-600 mt-2">≈ {diminuir.eventosAbsRemover} ausência(s)</p>
+                                <p className="text-xs text-gray-500 mt-1">Reduzir faltas/atrasos em {diminuir.eventosAbsRemover} dia(s)</p>
+                              </>
+                            ) : (
+                              <p className="text-lg font-bold text-green-600">✅ JÁ VAI BATER!</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {correlacoes.length > 0 && (
+                    <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">🔗 Correlações Detectadas</h3>
+                      <div className="space-y-3">
+                        {correlacoes.map((corr, idx) => (
+                          <div key={idx} className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
+                            <p className="text-sm font-bold text-purple-800">{corr.mensagem}</p>
+                            <p className="text-xs text-gray-600 mt-1">Índice: {corr.valor}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6 transform transition hover:scale-105">
                 <p className="text-sm font-semibold opacity-80">Total HE</p>
@@ -1292,6 +1582,8 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                       <th className="text-left py-3 px-3 font-bold">Tabela</th>
                       <th className="text-left py-3 px-3 font-bold">Ação</th>
                       <th className="text-left py-3 px-3 font-bold">Usuário</th>
+                      <th className="text-left py-3 px-3 font-bold">Nome (Deleção)</th>
+                      <th className="text-left py-3 px-3 font-bold">Motivo</th>
                       <th className="text-left py-3 px-3 font-bold">Data/Hora</th>
                       <th className="text-left py-3 px-3 font-bold">Detalhes</th>
                     </tr>
@@ -1310,6 +1602,8 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                           </span>
                         </td>
                         <td className="py-3 px-3 text-xs text-gray-600">{a.usuario}</td>
+                        <td className="py-3 px-3 text-xs text-gray-600">{a.nome_usuario || '-'}</td>
+                        <td className="py-3 px-3 text-xs text-gray-600">{a.motivo_delecao || '-'}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">{new Date(new Date(a.criado_em).getTime() - (3 * 60 * 60 * 1000)).toLocaleString('pt-BR')}</td>
                         <td className="py-3 px-3 text-xs text-gray-600">
                           {a.dados_novos ? `ID: ${a.dados_novos?.id || a.dados_novos?.cargo || '-'}` : (a.dados_anteriores ? `ID: ${a.dados_anteriores?.id || a.dados_anteriores?.cargo || '-'}` : '-')}
