@@ -1117,7 +1117,37 @@ const recalcularBonusComFerias = async () => {
       }
     }
   };
-
+const handleLimparAuditoria = async () => {
+  const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
+  
+  if (senhaDelete === null) {
+    return;
+  }
+  
+  if (senhaDelete === 'DELETAR2026') {
+    try {
+      const dataLimite = new Date();
+      dataLimite.setDate(dataLimite.getDate() - 30);
+      const dataLimiteStr = dataLimite.toISOString().split('T')[0];
+      
+      const { error } = await supabase
+        .from('auditoria')
+        .delete()
+        .lt('criado_em', dataLimiteStr);
+      
+      if (error) throw error;
+      
+      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+      if (auditData) setAuditoria(auditData);
+      
+      alert('✅ Auditoria de 30+ dias deletada com sucesso!');
+    } catch (error) {
+      alert('❌ Erro ao deletar: ' + error.message);
+    }
+  } else {
+    alert('❌ Senha incorreta! Operação cancelada.');
+  }
+};
   const handleResetBonusmensal = async () => {
     if (confirm('⚠️ RESET MENSAL - Todos ATIVOS voltarão a ser elegíveis. Tem certeza?')) {
       try {
