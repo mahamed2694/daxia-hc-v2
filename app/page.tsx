@@ -331,11 +331,15 @@ function AppContent({ onLogout }) {
         if (bonusData) setBonusElegibilidade(bonusData);
 
         setIsHydrated(true);
+        
+        // Recalcular bonus APÓS carregar tudo
+        setTimeout(async () => {
+          await recalcularBonusComFerias();
+        }, 500);
       } catch (error) {
         console.error('Erro ao carregar:', error);
         setIsHydrated(true);
       }
-      await recalcularBonusComFerias();
     };
 
     loadData();
@@ -1902,7 +1906,14 @@ const recalcularBonusComFerias = async () => {
                 ))}
               </div>
             </div>
+<div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 border-l-4 border-red-500">
+              <h2 className="text-lg sm:text-2xl font-bold text-red-800 mb-3 sm:mb-4">🗑️ Limpar Auditoria Antiga</h2>
+              <p className="text-gray-600 mb-3 sm:mb-4 text-xs sm:text-sm">Deleta registros de auditoria com mais de 30 dias (recomendado fazer 1x/mês):</p>
+              <button onClick={handleLimparAuditoria} className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-xs sm:text-sm">🔄 Limpar Dados Antigos</button>
+            </div>
 
+            <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🏖️ Registrar Férias</h2>
             <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
               <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🏖️ Registrar Férias</h2>
               <p className="text-gray-600 mb-3 sm:mb-4 text-xs sm:text-sm">Selecione o colaborador e as datas de férias:</p>
