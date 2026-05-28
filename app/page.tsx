@@ -1204,7 +1204,8 @@ const recalcularBonusComFerias = async () => {
     } else {
       alert('❌ Senha incorreta! Operação cancelada.');
     }
-  };return (
+  };
+return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
