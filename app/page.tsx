@@ -8,6 +8,7 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 const SUPABASE_URL = 'https://blsdahvliocoqqdzkzym.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XNUPzuPEgFil7C736xv_5Q_WzNDRuzp';
 const APP_PASSWORD = 'DAXIATEC465';
+const [valorBonus, setValorBonus] = useState(100);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
