@@ -1204,17 +1204,6 @@ const handleReversaoBonusDesclassificacao = async (pessoaId) => {
     }
 };
 
-  if (!isHydrated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
-          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
-        </div>
-      </div>
-    );
-  }
-
   const handleDeletarPessoa = async (pessoaId) => {
     const pessoa = pessoas.find(p => p.id === pessoaId);
     if (!pessoa) return;
@@ -1289,37 +1278,17 @@ const handleReversaoBonusDesclassificacao = async (pessoaId) => {
     return pessoa?.nome || 'Desconhecido';
   };
 
-  const Gauge = ({ value, max, label }) => {
-    const numValue = parseFloat(value) || 0;
-    const numMax = parseFloat(max) || 1;
-    const percentage = Math.min((numValue / numMax) * 100, 100);
-    let barColor = '#10B981';
-    let textColor = 'text-green-700';
-    let bgColor = 'bg-green-50';
-    if (percentage >= 80) {
-      barColor = '#EF4444';
-      textColor = 'text-red-700';
-      bgColor = 'bg-red-50';
-    } else if (percentage >= 50) {
-      barColor = '#F59E0B';
-      textColor = 'text-yellow-700';
-      bgColor = 'bg-yellow-50';
-    }
+
+  if (!isHydrated) {
     return (
-      <div className={`flex flex-col items-center gap-2 sm:gap-4 p-3 sm:p-6 rounded-lg ${bgColor}`}>
-        <svg width="100" height="100" viewBox="0 0 120 120" className="sm:w-32 sm:h-32">
-          <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E7EB" strokeWidth="8" />
-          <circle cx="60" cy="60" r="50" fill="none" stroke={barColor} strokeWidth="8" strokeDasharray={`${(percentage / 100) * 314.159} 314.159`} strokeLinecap="round" style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px', transition: 'stroke-dasharray 0.5s ease' }} />
-          <text x="60" y="65" textAnchor="middle" fontSize="24" fontWeight="bold" fill="#111827">{percentage.toFixed(0)}%</text>
-        </svg>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
         <div className="text-center">
-          <p className={`text-sm sm:text-lg font-bold ${textColor}`}>{label}</p>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">{numValue.toFixed(0)} / {numMax.toFixed(0)}</p>
+          <p className="text-xl sm:text-2xl font-bold text-blue-600 mb-4">⏳ Carregando...</p>
+          <p className="text-gray-600 text-sm sm:text-base">Conectando ao Supabase...</p>
         </div>
       </div>
     );
-  };
-
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
