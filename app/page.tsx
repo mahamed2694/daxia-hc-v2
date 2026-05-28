@@ -1390,8 +1390,7 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
                         )}
                       </div>
                     </div>
-                  </div>
-{(() => {
+               
               const previsao = previsaoBaterMeta();
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
