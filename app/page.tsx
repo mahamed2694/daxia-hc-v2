@@ -1290,7 +1290,7 @@ const handleLimparAuditoria = async () => {
         </div>
       </div>
     );
-  },
+  };
   if (!isHydrated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
