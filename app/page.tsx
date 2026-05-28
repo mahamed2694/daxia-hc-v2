@@ -348,7 +348,7 @@ function AppContent({ onLogout }) {
     }, []);
 
   const handleAdicionarLançamento = async (e) => {
-    e.preventDefault();
+e.preventDefault();
     
     // VALIDAÇÃO: Verificar se pessoa existe
     const pessoaExiste = pessoas.find(p => p.id === parseInt(formLançamento.pessoaId));
@@ -363,6 +363,44 @@ function AppContent({ onLogout }) {
     }
 
     try {
+      let horas = formLançamento.horas;
+      if (formLançamento.tipo === 'falta-total' || formLançamento.tipo === 'atestado') {
+        horas = horasUteisDia;
+      }
+      const lancamentoData = {
+        pessoa_id: parseInt(formLançamento.pessoaId),
+        tipo: formLançamento.tipo,
+        data: formLançamento.data,
+        horas: ['he-60', 'he-100', 'atestado-horas', 'saida-antecipada'].includes(formLançamento.tipo) ? parseFloat(formLançamento.horas) || 0 : horas,
+        minutos: formLançamento.tipo === 'atraso' ? parseInt(formLançamento.minutos) || 0 : 0,
+        descricao: formLançamento.descricao
+      };
+      const { data, error } = await supabase.from('lancamentos').insert([lancamentoData]).select();
+      if (error) throw error;
+      registrarAuditoria('lancamentos', 'INSERT', data[0]);
+      
+      // Recalcular bonus com férias
+      await recalcularBonusComFerias();
+      
+      const pessoaId = parseInt(formLançamento.pessoaId);
+      if (formLançamento.tipo === 'falta-total') {
+        await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'atraso' && parseInt(formLançamento.minutos) > 10 && !formLançamento.avisoComunicado) {
+        await desclassificarBonus(pessoaId, `Atraso não comunicado - ${formLançamento.minutos} min em ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'saida-antecipada' && !formLançamento.avisoComunicado) {
+        await desclassificarBonus(pessoaId, `Saída antecipada não comunicada - ${formLançamento.horas}h em ${formLançamento.data}`);
+      } else if (formLançamento.tipo === 'advertencia') {
+        await desclassificarBonus(pessoaId, `Advertência registrada em ${formLançamento.data}`);
+      }
+      
+      setFormLançamento({ pessoaId: pessoas[0]?.id || 1, tipo: 'he-60', data: '', horas: 0, minutos: 0, descricao: '', avisoComunicado: true });
+      
+    } catch (error) {
+      alert('Erro: ' + error.message);
+    }
+  };
+
+  const registrarAuditoria = async (tabela, acao, dados, detalhes = null) => {
     if (!isHydrated) return;
     try {
       await supabase.from('auditoria').insert([{
@@ -379,7 +417,6 @@ function AppContent({ onLogout }) {
       console.error('Erro ao registrar auditoria:', error);
     }
   };
-
   const desclassificarBonus = async (pessoaId, motivo) => {
     if (!isHydrated) return;
     try {
