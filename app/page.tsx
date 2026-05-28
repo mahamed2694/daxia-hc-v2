@@ -335,6 +335,7 @@ function AppContent({ onLogout }) {
         console.error('Erro ao carregar:', error);
         setIsHydrated(true);
       }
+      await recalcularBonusComFerias();
     };
 
     loadData();
@@ -929,7 +930,52 @@ function AppContent({ onLogout }) {
       }
     }
   };
+const recalcularBonusComFerias = async () => {
+  try {
+    const { data: todasPessoas } = await supabase.from('pessoas').select('*');
+    const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
 
+    if (allBonus && todasPessoas) {
+      for (const bonus of allBonus) {
+        if (bonus.elegivel && (todasPessoas.find(p => p.id === bonus.pessoa_id)?.ativo ?? true)) {
+          const pessoa = todasPessoas.find(p => p.id === bonus.pessoa_id);
+          
+          const hoje = new Date();
+          const mesAtual = hoje.getMonth();
+          const anoAtual = hoje.getFullYear();
+          const primeiroDia = new Date(anoAtual, mesAtual, 1);
+          const ultimoDia = new Date(anoAtual, mesAtual + 1, 0);
+          
+          let diasUteis = 0;
+          for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() >= 1 && d.getDay() <= 5) diasUteis++;
+          }
+          
+          let diasFerias = 0;
+          if (pessoa.data_inicio_ferias && pessoa.data_fim_ferias) {
+            const inicio = new Date(pessoa.data_inicio_ferias);
+            const fim = new Date(pessoa.data_fim_ferias);
+            for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+              if (d.getDay() >= 1 && d.getDay() <= 5) diasFerias++;
+            }
+          }
+          
+          const bonusCalc = (VALOR_BONUS * (diasUteis - diasFerias)) / diasUteis;
+          
+          await supabase
+            .from('bonus_elegibilidade')
+            .update({ valor_calculado: bonusCalc })
+            .eq('id', bonus.id);
+        }
+      }
+    }
+    
+    const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
+    if (bonusData) setBonusElegibilidade(bonusData);
+  } catch (error) {
+    console.error('Erro ao recalcular bonus:', error);
+  }
+};
   const handleAdicionarLançamento = async (e) => {
     e.preventDefault();
       // VALIDAÇÃO: Verificar se pessoa existe
@@ -959,50 +1005,8 @@ function AppContent({ onLogout }) {
       if (error) throw error;
       registrarAuditoria('lancamentos', 'INSERT', data[0]);
       
-      // Recalcular bonus com férias para TODOS elegíveis
-      const { data: todasPessoas } = await supabase.from('pessoas').select('*');
-      const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
-
-      if (allBonus && todasPessoas) {
-        for (const bonus of allBonus) {
-          if (bonus.elegivel) {
-            const pessoa = todasPessoas.find(p => p.id === bonus.pessoa_id);
-            if (pessoa && (pessoa.ativo ?? true)) {
-              // Calcular dias trabalhados
-              const hoje = new Date();
-              const mesAtual = hoje.getMonth();
-              const anoAtual = hoje.getFullYear();
-              const primeiroDia = new Date(anoAtual, mesAtual, 1);
-              const ultimoDia = new Date(anoAtual, mesAtual + 1, 0);
-              
-              let diasUteis = 0;
-              for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
-                if (d.getDay() >= 1 && d.getDay() <= 5) diasUteis++;
-              }
-              
-              let diasFerias = 0;
-              if (pessoa.data_inicio_ferias && pessoa.data_fim_ferias) {
-                const inicio = new Date(pessoa.data_inicio_ferias);
-                const fim = new Date(pessoa.data_fim_ferias);
-                for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
-                  if (d.getDay() >= 1 && d.getDay() <= 5) diasFerias++;
-                }
-              }
-              
-              const bonusCalc = (VALOR_BONUS * (diasUteis - diasFerias)) / diasUteis;
-              
-              await supabase
-                .from('bonus_elegibilidade')
-                .update({ valor_calculado: bonusCalc })
-                .eq('id', bonus.id);
-            }
-          }
-        }
-        
-        const { data: bonusData } = await supabase.from('bonus_elegibilidade').select('*');
-        if (bonusData) setBonusElegibilidade(bonusData);
-      }
-      
+      // Recalcular bonus com férias
+      await recalcularBonusComFerias();
       const pessoaId = parseInt(formLançamento.pessoaId);
       if (formLançamento.tipo === 'falta-total') {
         await desclassificarBonus(pessoaId, `Falta injustificada - ${formLançamento.data}`);
@@ -1918,6 +1922,7 @@ function AppContent({ onLogout }) {
                     await supabase.from('pessoas').update({ data_inicio_ferias: inicio, data_fim_ferias: fim }).eq('id', pessoaId);
                     setPessoas(p => p.map(x => x.id === pessoaId ? { ...x, data_inicio_ferias: inicio, data_fim_ferias: fim } : x));
                     alert('✅ Férias registradas!');
+                    await recalcularBonusComFerias();
                     document.getElementById('feriasPessoa').value = '';
                     document.getElementById('feriasinicio').value = '';
                     document.getElementById('feriasfim').value = '';
