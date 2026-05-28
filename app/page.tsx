@@ -786,7 +786,102 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
       </div>
     );
   };
+const recalcularBonusComFerias = async () => {
+    try {
+      const { data: allPessoas } = await supabase.from('pessoas').select('*');
+      const { data: allLancamentos } = await supabase.from('lancamentos').select('*');
+      const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
+      
+      if (!allPessoas || !allLancamentos || !allBonus) return;
+      
+      for (const pessoa of allPessoas) {
+        const lancamentosPessoa = allLancamentos.filter(l => l.pessoa_id === pessoa.id);
+        const feriasPessoa = lancamentosPessoa.filter(l => l.tipo === 'férias');
+        
+        if (feriasPessoa.length > 0) {
+          let diasUteisFérias = 0;
+          for (const férias of feriasPessoa) {
+            const inicio = new Date(férias.data_inicio || férias.data);
+            const fim = new Date(férias.data_fim || férias.data);
+            
+            for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+              const dia = d.getDay();
+              if (dia !== 0 && dia !== 6) diasUteisFérias++;
+            }
+          }
+          
+          const diasUteisTotal = 22;
+          const proporção = Math.max(0, (diasUteisTotal - diasUteisFérias) / diasUteisTotal);
+          
+          const bonusAtual = allBonus.find(b => b.pessoa_id === pessoa.id);
+          if (bonusAtual && bonusAtual.elegivel) {
+            const valorBonusOriginal = 100;
+            const valorProporcional = valorBonusOriginal * proporção;
+            
+            await supabase
+              .from('bonus_elegibilidade')
+              .update({ valor_bonus: valorProporcional })
+              .eq('id', bonusAtual.id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao recalcular bônus com férias:', error);
+    }
+  };
 
+  const handleAdicionarFérias = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const pessoaSelectEl = document.getElementById('feriasPessoa');
+      const inicioInputEl = document.getElementById('feriasinicio');
+      const fimInputEl = document.getElementById('feriasfim');
+      
+      if (!pessoaSelectEl || !inicioInputEl || !fimInputEl) {
+        alert('❌ Erro: campos de férias não encontrados');
+        return;
+      }
+      
+      const pessoaId = pessoaSelectEl.value;
+      const dataInicio = inicioInputEl.value;
+      const dataFim = fimInputEl.value;
+      
+      if (!pessoaId || !dataInicio || !dataFim) {
+        alert('❌ Preencha todos os campos!');
+        return;
+      }
+      
+      const { data, error } = await supabase.from('lancamentos').insert({
+        pessoa_id: pessoaId,
+        tipo: 'férias',
+        data: dataInicio,
+        data_inicio: dataInicio,
+        data_fim: dataFim,
+        descricao: `Férias de ${new Date(dataInicio).toLocaleDateString('pt-BR')} a ${new Date(dataFim).toLocaleDateString('pt-BR')}`,
+        criado_em: new Date().toISOString()
+      });
+      
+      if (error) throw error;
+      
+      const pessoa = pessoas.find(p => p.id === pessoaId);
+      await registrarAuditoria('lancamentos', 'INSERT', data?.[0], { pessoa_id: pessoaId, tipo: 'férias' });
+      
+      await recalcularBonusComFerias();
+      
+      const { data: novosDados } = await supabase.from('lancamentos').select('*');
+      if (novosDados) setLançamentos(novosDados);
+      
+      alert('✅ Férias registradas com sucesso!');
+      
+      pessoaSelectEl.value = '';
+      inicioInputEl.value = '';
+      fimInputEl.value = '';
+      
+    } catch (error) {
+      alert('❌ Erro ao registrar férias: ' + error.message);
+    }
+  };
   if (!isHydrated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
@@ -1252,6 +1347,29 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
 
         {abaAtiva === 'configuracao' && (
           <div className="space-y-8">
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+  <h2 className="text-2xl font-bold text-gray-800 mb-4">🏖️ Registrar Férias</h2>
+  <form onSubmit={handleAdicionarFérias} className="space-y-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">👤 Colaborador</label>
+        <select id="feriasPessoa" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+          <option value="">Selecione um colaborador</option>
+          {pessoas.map(p => (<option key={p.id} value={p.id}>{p.nome} ({p.setor})</option>))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">📅 Data Início</label>
+        <input type="date" id="feriasinicio" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" required />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">📅 Data Fim</label>
+        <input type="date" id="feriasfim" className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" required />
+      </div>
+    </div>
+    <button type="submit" className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700">🏖️ Registrar Férias</button>
+  </form>
+</div>
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">🎯 Metas</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
