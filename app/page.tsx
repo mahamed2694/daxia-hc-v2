@@ -332,14 +332,19 @@ function AppContent({ onLogout }) {
 
         setIsHydrated(true);
         
-        // Recalcular bonus APÓS carregar tudo
-        setTimeout(async () => {
-          await recalcularBonusComFerias();
-        }, 500);
+        setIsHydrated(true);
       } catch (error) {
         console.error('Erro ao carregar:', error);
         setIsHydrated(true);
       }
+    };
+
+    loadData();
+    
+    // Recalcular bonus APÓS carregar (fora do try/catch)
+    setTimeout(async () => {
+      await recalcularBonusComFerias();
+    }, 1000);
     };
 
     loadData();
@@ -1960,11 +1965,18 @@ const handleLimparAuditoria = async () => {
                   try {
                     await supabase.from('pessoas').update({ data_inicio_ferias: inicio, data_fim_ferias: fim }).eq('id', pessoaId);
                     setPessoas(p => p.map(x => x.id === pessoaId ? { ...x, data_inicio_ferias: inicio, data_fim_ferias: fim } : x));
+                   await recalcularBonusComFerias();
                     alert('✅ Férias registradas!');
-                    await recalcularBonusComFerias();
-                    document.getElementById('feriasPessoa').value = '';
-                    document.getElementById('feriasinicio').value = '';
-                    document.getElementById('feriasfim').value = '';
+                    try {
+                      const pessoaSelect = document.getElementById('feriasPessoa');
+                      const inicioInput = document.getElementById('feriasinicio');
+                      const fimInput = document.getElementById('feriasfim');
+                      if (pessoaSelect) pessoaSelect.value = '';
+                      if (inicioInput) inicioInput.value = '';
+                      if (fimInput) fimInput.value = '';
+                    } catch (e) {
+                      console.log('Inputs já não estão disponíveis');
+                    }
                   } catch (error) {
                     alert('Erro: ' + error.message);
                   }
