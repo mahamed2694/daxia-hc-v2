@@ -593,6 +593,7 @@ function AppContent({ onLogout }) {
       try {
         await supabase.from('pessoas').delete().eq('id', id);
         registrarAuditoria('pessoas', 'DELETE', null, pessoa);
+        setPessoas(p => p.filter(x => x.id !== id));
         alert('✅ Colaborador deletado com sucesso!');
       } catch (error) {
         alert('❌ Erro ao deletar: ' + error.message);
