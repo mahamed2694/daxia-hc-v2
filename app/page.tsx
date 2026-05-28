@@ -1171,35 +1171,40 @@ const recalcularBonusComFerias = async () => {
       }
     }
   };
-if (senhaDelete === 'DELETAR2026') {
-    try {
-      const dataLimite = new Date();
-      dataLimite.setDate(dataLimite.getDate() - 30);
-      const dataLimiteStr = dataLimite.toISOString().split('T')[0];
-      
-      // Deletar via RPC ou fazer select e depois delete
-      const { data: toDelete } = await supabase
-        .from('auditoria')
-        .select('id')
-        .lt('criado_em', dataLimiteStr);
-      
-      if (toDelete && toDelete.length > 0) {
-        for (const item of toDelete) {
-          await supabase.from('auditoria').delete().eq('id', item.id);
-        }
-      }
-      
-      const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
-      if (auditData) setAuditoria(auditData);
-      
-      alert('✅ Auditoria de 30+ dias deletada com sucesso!');
-    } catch (error) {
-      alert('❌ Erro ao deletar: ' + error.message);
+};
+
+  const handleLimparAuditoria = async () => {
+    const senhaDelete = prompt('⚠️ CUIDADO!\n\nVocê vai deletar AUDITORIA com mais de 30 dias.\n\nDigite a senha de SUPER ADMIN para confirmar:');
+    
+    if (senhaDelete === null) {
+      return;
     }
-  } else {
-    alert('❌ Senha incorreta! Operação cancelada.');
-  }
-};  return (
+    
+    if (senhaDelete === 'DELETAR2026') {
+      try {
+        const dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - 30);
+        const dataLimiteStr = dataLimite.toISOString().split('T')[0];
+        
+        const { data: toDelete } = await supabase.from('auditoria').select('id').lt('criado_em', dataLimiteStr);
+        
+        if (toDelete && toDelete.length > 0) {
+          for (const item of toDelete) {
+            await supabase.from('auditoria').delete().eq('id', item.id);
+          }
+        }
+        
+        const { data: auditData } = await supabase.from('auditoria').select('*').order('criado_em', { ascending: false });
+        if (auditData) setAuditoria(auditData);
+        
+        alert('✅ Auditoria de 30+ dias deletada com sucesso!');
+      } catch (error) {
+        alert('❌ Erro ao deletar: ' + error.message);
+      }
+    } else {
+      alert('❌ Senha incorreta! Operação cancelada.');
+    }
+  };return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
