@@ -8,8 +8,6 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 const SUPABASE_URL = 'https://blsdahvliocoqqdzkzym.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XNUPzuPEgFil7C736xv_5Q_WzNDRuzp';
 const APP_PASSWORD = 'DAXIATEC465';
-export default function Home() {
-const [valorBonus, setValorBonus] = useState(100);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -127,6 +125,7 @@ function AppContent({ onLogout }) {
   };
 
   const setores = ['Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
+  const VALOR_BONUS = 100;
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState('resumos');
@@ -788,49 +787,75 @@ const handleToggleAtivoColaborador = async (pessoaId, ativo) => {
     );
   };
 const recalcularBonusComFerias = async () => {
-    try {
-      const { data: allPessoas } = await supabase.from('pessoas').select('*');
-      const { data: allLancamentos } = await supabase.from('lancamentos').select('*');
-      const { data: allBonus } = await supabase.from('bonus_elegibilidade').select('*');
-      
-      if (!allPessoas || !allLancamentos || !allBonus) return;
-      
-      for (const pessoa of allPessoas) {
-        const lancamentosPessoa = allLancamentos.filter(l => l.pessoa_id === pessoa.id);
-        const feriasPessoa = lancamentosPessoa.filter(l => l.tipo === 'férias');
-        
-        if (feriasPessoa.length > 0) {
-          let diasUteisFérias = 0;
-          for (const férias of feriasPessoa) {
-            const inicio = new Date(férias.data_inicio || férias.data);
-            const fim = new Date(férias.data_fim || férias.data);
-            
-            for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
-              const dia = d.getDay();
-              if (dia !== 0 && dia !== 6) diasUteisFérias++;
-            }
-          }
-          
-          const diasUteisTotal = 22;
-          const proporção = Math.max(0, (diasUteisTotal - diasUteisFérias) / diasUteisTotal);
-          
-          const bonusAtual = allBonus.find(b => b.pessoa_id === pessoa.id);
-          if (bonusAtual && bonusAtual.elegivel) {
-            const valorBonusOriginal = 100;
-            const valorProporcional = valorBonusOriginal * proporção;
-            
-            await supabase
-              .from('bonus_elegibilidade')
-              .update({ valor_calculado: valorProporcional })
-              .eq('id', bonusAtual.id);
+    for (const pessoa of allPessoas) {
+      const lancamentosPessoa = allLancamentos.filter(
+        l => l.pessoa_id === pessoa.id
+      );
+
+      const feriasPessoa = lancamentosPessoa.filter(
+        l => l.tipo === 'férias'
+      );
+
+      let diasUteisFerias = 0;
+
+      for (const ferias of feriasPessoa) {
+        const inicio = new Date(ferias.data_inicio || ferias.data);
+        const fim = new Date(ferias.data_fim || ferias.data);
+
+        for (
+          let d = new Date(inicio);
+          d <= fim;
+          d.setDate(d.getDate() + 1)
+        ) {
+          const diaSemana = d.getDay();
+
+          if (diaSemana !== 0 && diaSemana !== 6) {
+            diasUteisFerias++;
           }
         }
       }
-    } catch (error) {
-      console.error('Erro ao recalcular bônus com férias:', error);
-    }
-  };
 
+      const proporcao = Math.max(
+        0,
+        (DIAS_UTEIS_MES - diasUteisFerias) / DIAS_UTEIS_MES
+      );
+
+      const valorBonusCalculado = Number(
+        (VALOR_BONUS * proporcao).toFixed(2)
+      );
+
+      const bonusAtual = allBonus.find(
+        b => b.pessoa_id === pessoa.id
+      );
+
+      if (bonusAtual) {
+        const { error } = await supabase
+          .from('bonus_elegibilidade')
+          .update({
+            valor_bonus: bonusAtual.elegivel
+              ? valorBonusCalculado
+              : 0
+          })
+          .eq('id', bonusAtual.id);
+
+        if (error) {
+          console.error('Erro ao atualizar bônus:', error);
+        }
+      }
+    }
+
+    const { data: bonusAtualizado } = await supabase
+      .from('bonus_elegibilidade')
+      .select('*');
+
+    if (bonusAtualizado) {
+      setBonusElegibilidade(bonusAtualizado);
+    }
+  } catch (error) {
+    console.error('Erro ao recalcular bônus:', error);
+    alert('❌ Erro ao recalcular bônus');
+  }
+};
   const handleAdicionarFérias = async (e) => {
     e.preventDefault();
     
@@ -869,22 +894,15 @@ const recalcularBonusComFerias = async () => {
       await registrarAuditoria('lancamentos', 'INSERT', data?.[0], { pessoa_id: pessoaId, tipo: 'férias' });
       
       await recalcularBonusComFerias();
-      const { data: bonusAtualizado } = await supabase
-  .from('bonus_elegibilidade')
-  .select('*');
-
-if (bonusAtualizado) {
-  setBonusElegibilidade(bonusAtualizado);
-}
       
       const { data: novosDados } = await supabase.from('lancamentos').select('*');
       if (novosDados) setLançamentos(novosDados);
       
       alert('✅ Férias registradas com sucesso!');
       
-     if (pessoaSelectEl) pessoaSelectEl.value = '';
-if (inicioInputEl) inicioInputEl.value = '';
-if (fimInputEl) fimInputEl.value = '';
+      pessoaSelectEl.value = '';
+      inicioInputEl.value = '';
+      fimInputEl.value = '';
       
     } catch (error) {
       alert('❌ Erro ao registrar férias: ' + error.message);
@@ -1229,8 +1247,8 @@ if (fimInputEl) fimInputEl.value = '';
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Elegiveis</p>
-                  <p className="text-4xl font-bold mt-2">{bonusElegibilidade.filter(b => b.elegivel).length}</p>
-                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
+                  <p className="text-4xl font-bold mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_bonus || VALOR_BONUS), 0).toFixed(2)}</p>
+                  <p className="text-xs opacity-80 mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_bonus || VALOR_BONUS), 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Desclassificados</p>
@@ -1239,7 +1257,7 @@ if (fimInputEl) fimInputEl.value = '';
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Valor Total</p>
-                  <p className="text-4xl font-bold mt-2"> R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_calculado ?? VALOR_BONUS), 0).toFixed(2)}</p>
+                  <p className="text-4xl font-bold mt-2">R$ {bonusElegibilidade.filter(b => b.elegivel).length * VALOR_BONUS}</p>
                   <p className="text-xs opacity-80 mt-2">A pagar</p>
                 </div>
               </div>
@@ -1249,7 +1267,8 @@ if (fimInputEl) fimInputEl.value = '';
                   <h3 className="text-xl font-bold text-green-800 mb-4">✅ Elegiveis para Bonus</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {bonusElegibilidade.filter(b => b.elegivel && pessoas.find(p => p.id === b.pessoa_id)).length > 0 ? (
-                      bonusElegibilidade.filter(b => b.elegivel).map(bonus => {const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
+                      bonusElegibilidade.filter(b => b.elegivel).map(bonus => {
+                        const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
                         return (
                           <div key={bonus.id} className="flex justify-between items-center bg-white p-3 rounded border border-green-300">
                             <div>
@@ -1257,9 +1276,10 @@ if (fimInputEl) fimInputEl.value = '';
                               <p className="text-xs text-gray-600">{pessoa?.setor} • {pessoa?.cargo}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-green-600">
-  R$ {(bonus.valor_calculado ?? VALOR_BONUS).toFixed(2)}
-</p>
+                              <p className="font-bold text-green-600">R$ {(bonus.valor_bonus || VALOR_BONUS).toFixed(2)}</p>
+                              {(bonus.valor_bonus || VALOR_BONUS) < VALOR_BONUS && (
+    <p className="text-xs text-orange-600 font-semibold mt-1">🏖️ Bonus proporcional por férias</p>
+  )}
                               <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
                             </div>
                           </div>
@@ -1307,8 +1327,7 @@ if (fimInputEl) fimInputEl.value = '';
                 const hoje = new Date().toLocaleDateString('pt-BR');
                 const elegiveis = bonusElegibilidade.filter(b => b.elegivel);
                 const desclassificados = bonusElegibilidade.filter(b => !b.elegivel);
-                const totalBonus = elegiveis.reduce((acc, b) => acc + (b.valor_calculado ?? VALOR_BONUS),0
-          );
+                const totalBonus = elegiveis.length * VALOR_BONUS;
 
                 let conteudo = `DAXIA PEOPLE ANALYTICS - RELATÓRIO DE BONUS\n`;
                 conteudo += `Data: ${hoje}\n`;
@@ -1326,7 +1345,7 @@ if (fimInputEl) fimInputEl.value = '';
                 conteudo += `-${"-".repeat(60)}\n`;
                 elegiveis.forEach((bonus, idx) => {
                   const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
-                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${(bonus.valor_calculado ?? VALOR_BONUS).toFixed(2)}\n`;
+                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${VALOR_BONUS}\n`;
                 });
 
                 conteudo += `\nCOLABORADORES DESCLASSIFICADOS\n`;
@@ -1530,3 +1549,5 @@ if (fimInputEl) fimInputEl.value = '';
     </div>
   );
 }
+
+
