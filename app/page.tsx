@@ -1914,8 +1914,6 @@ const recalcularBonusComFerias = async () => {
 
             <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
               <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🏖️ Registrar Férias</h2>
-            <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
-              <h2 className="text-lg sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">🏖️ Registrar Férias</h2>
               <p className="text-gray-600 mb-3 sm:mb-4 text-xs sm:text-sm">Selecione o colaborador e as datas de férias:</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-2 sm:gap-4">
                 <select id="feriasPessoa" className="border-2 border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 text-xs sm:text-sm">
