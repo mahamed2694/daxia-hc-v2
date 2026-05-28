@@ -125,7 +125,7 @@ function AppContent({ onLogout }) {
   };
 
   const setores = ['Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
-  const VALOR_BONUS = 100;
+  const R$ {(bonus.valor_calculado || VALOR_BONUS).toFixed(2)};
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState('resumos');
@@ -820,7 +820,7 @@ const recalcularBonusComFerias = async () => {
             
             await supabase
               .from('bonus_elegibilidade')
-              .update({ valor_bonus: valorProporcional })
+              .update({ valor_calculado: valorProporcional })
               .eq('id', bonusAtual.id);
           }
         }
@@ -1238,7 +1238,7 @@ if (fimInputEl) fimInputEl.value = '';
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-6">
                   <p className="text-sm font-semibold opacity-80">Valor Total</p>
-                  <p className="text-4xl font-bold mt-2"> R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_bonus ?? VALOR_BONUS), 0).toFixed(2)}</p>
+                  <p className="text-4xl font-bold mt-2"> R$ {bonusElegibilidade.filter(b => b.elegivel).reduce((acc, b) => acc + (b.valor_calculado ?? VALOR_BONUS), 0).toFixed(2)}</p>
                   <p className="text-xs opacity-80 mt-2">A pagar</p>
                 </div>
               </div>
@@ -1257,7 +1257,7 @@ if (fimInputEl) fimInputEl.value = '';
                             </div>
                             <div className="text-right">
                               <p className="font-bold text-green-600">
-  R$ {(bonus.valor_bonus ?? VALOR_BONUS).toFixed(2)}
+  R$ {(bonus.valor_calculado ?? VALOR_BONUS).toFixed(2)}
 </p>
                               <button onClick={() => handleToggleBonusElegibilidade(bonus.pessoa_id, false)} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mt-1">Desclassificar</button>
                             </div>
@@ -1306,7 +1306,7 @@ if (fimInputEl) fimInputEl.value = '';
                 const hoje = new Date().toLocaleDateString('pt-BR');
                 const elegiveis = bonusElegibilidade.filter(b => b.elegivel);
                 const desclassificados = bonusElegibilidade.filter(b => !b.elegivel);
-                const totalBonus = elegiveis.reduce((acc, b) => acc + (b.valor_bonus ?? VALOR_BONUS),0
+                const totalBonus = elegiveis.reduce((acc, b) => acc + (b.valor_calculado ?? VALOR_BONUS),0
           );
 
                 let conteudo = `DAXIA PEOPLE ANALYTICS - RELATÓRIO DE BONUS\n`;
@@ -1325,7 +1325,7 @@ if (fimInputEl) fimInputEl.value = '';
                 conteudo += `-${"-".repeat(60)}\n`;
                 elegiveis.forEach((bonus, idx) => {
                   const pessoa = pessoas.find(p => p.id === bonus.pessoa_id);
-                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${(bonus.valor_bonus ?? VALOR_BONUS).toFixed(2)}\n`;
+                  conteudo += `${idx + 1}. ${pessoa?.nome} (${pessoa?.cargo}) - R$ ${(bonus.valor_calculado ?? VALOR_BONUS).toFixed(2)}\n`;
                 });
 
                 conteudo += `\nCOLABORADORES DESCLASSIFICADOS\n`;
