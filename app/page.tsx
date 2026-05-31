@@ -891,7 +891,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       if (error) throw error;
       setLancamentos(l => [novo, ...l]);
 
-      // Calcular proporcional — considera apenas dias de férias dentro do mês atual
+      // Calcular proporcional — dias trabalhados = dias do mês - dias de férias no mês
       const hoje = new Date();
       const mesAtual = hoje.getMonth() + 1;
       const anoAtual = hoje.getFullYear();
@@ -1253,20 +1253,30 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
         {/* Menu mobile fixo */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 flex justify-around py-2 shadow-lg">
-          {[
-            ['resumos','📊'],['calendario','📅'],['comparativo','📊'],['calor','🌡️'],['lancamentos','📝'],['bonus','🎁'],['configuracao','⚙️']
-          ].map(([id, icon]) => (
-            <button key={id} onClick={() => setAbaAtiva(id)}
-              className={`flex flex-col items-center text-xs px-2 py-1 rounded-lg
-                ${abaAtiva === id ? 'text-blue-600 font-bold' : 'text-gray-500'}`}>
-              <span className="text-xl">{icon}</span>
-              <span>{id === 'lancamentos' ? 'Lanç.' : id.charAt(0).toUpperCase() + id.slice(1,5)}</span>
-            </button>
-          ))}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 shadow-lg">
+          <div className="flex overflow-x-auto py-2 px-1 gap-1 scrollbar-hide" style={{scrollbarWidth:'none'}}>
+            {[
+              ['resumos','📊','Resumos'],
+              ['dashboard','📈','Dashboard'],
+              ['calendario','📅','Calendário'],
+              ['comparativo','📊','Comparativo'],
+              ['calor','🌡️','Calor'],
+              ['lancamentos','📝','Lançamentos'],
+              ['ferias','🏖️','Férias'],
+              ['bonus','🎁','Bônus'],
+              ['cha','🧠','Matriz CHA'],
+              ['auditoria','🔍','Auditoria'],
+              ['configuracao','⚙️','Config'],
+            ].map(([id, icon, label]) => (
+              <button key={id} onClick={() => setAbaAtiva(id)}
+                className={`flex flex-col items-center text-xs px-3 py-1 rounded-lg flex-shrink-0 min-w-[52px] transition
+                  ${abaAtiva === id ? 'text-blue-600 font-bold bg-blue-50' : 'text-gray-500'}`}>
+                <span className="text-lg">{icon}</span>
+                <span className="whitespace-nowrap">{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-
-
-        {/* Botão de ajuda contextual flutuante — aparece em todas as abas */}
         <button
           onClick={() => { setGuiaAberto(true); setGuiaPasso(0); setGuiaAba(abaAtiva); }}
           className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-20 bg-blue-600 hover:bg-blue-700 text-white w-12 h-12 rounded-full shadow-lg font-bold text-xl flex items-center justify-center"
@@ -2879,7 +2889,7 @@ const PASSOS_GUIA = [
     aba: 'ferias',
     titulo: '🏖️ Aba Férias',
     icone: '🏖️',
-    descricao: 'Registre o período de férias de cada colaborador informando data de início e fim.\n\n• O bônus é calculado proporcionalmente considerando apenas os dias de férias dentro do mês atual\n• O histórico dos últimos 12 meses fica disponível na tabela abaixo\n• Conflitos de férias no mesmo time geram alertas nos Insights',
+    descricao: 'Registre o período de férias de cada colaborador informando data de início e fim.\n\n• O bônus é proporcional aos dias trabalhados no mês: ex. 20 dias de férias em um mês de 30 = 10 dias trabalhados = R$ 33,33 de bônus\n• O histórico dos últimos 12 meses fica disponível na tabela abaixo\n• Conflitos de férias no mesmo time geram alertas nos Insights',
     dica: '💡 Férias em outros meses não afetam o bônus do mês atual.',
   },
   {
