@@ -3225,6 +3225,7 @@ function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteis
                   </div>
                 )}
               </button>
+            );
           })}
         </div>
       </div>
