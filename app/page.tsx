@@ -127,6 +127,46 @@ function getTipoCor(tipo: string): string {
   return 'bg-gray-100 text-gray-800';
 }
 
+
+function Avatar({ pessoa, tamanho = 'sm' }: { pessoa?: Pessoa; tamanho?: 'sm' | 'md' }) {
+  const tam = tamanho === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
+  if (!pessoa) return null;
+  if (pessoa.foto_url) return (
+    <img src={pessoa.foto_url} alt={pessoa.nome}
+    className={`${tam} rounded-full object-cover flex-shrink-0`} />
+  );
+  const iniciais = pessoa.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  const cores = ['bg-blue-500','bg-green-500','bg-purple-500','bg-orange-500','bg-red-500','bg-teal-500'];
+  const cor = cores[pessoa.id % cores.length];
+  return (
+    <div className={`${tam} ${cor} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}>
+    {iniciais}
+    </div>
+  );
+}
+
+function Gauge({ value, max, label }: { value: number; max: number; label: string }) {
+  const pct = Math.min((value / (max || 1)) * 100, 100);
+  const cor = pct >= 80 ? '#EF4444' : pct >= 50 ? '#F59E0B' : '#10B981';
+  const textCor = pct >= 80 ? 'text-red-700' : pct >= 50 ? 'text-yellow-700' : 'text-green-700';
+  const bg = pct >= 80 ? 'bg-red-50' : pct >= 50 ? 'bg-yellow-50' : 'bg-green-50';
+  return (
+    <div className={`flex flex-col items-center gap-4 p-6 rounded-xl ${bg}`}>
+    <svg width="120" height="120" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E7EB" strokeWidth="8"/>
+      <circle cx="60" cy="60" r="50" fill="none" stroke={cor} strokeWidth="8"
+      strokeDasharray={`${(pct/100)*314.159} 314.159`} strokeLinecap="round"
+      style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px', transition: 'stroke-dasharray 0.5s ease' }}/>
+      <text x="60" y="65" textAnchor="middle" fontSize="26" fontWeight="bold" fill="#111827">{pct.toFixed(0)}%</text>
+    </svg>
+    <div className="text-center">
+      <p className={`text-base font-bold ${textCor}`}>{label}</p>
+      <p className="text-xs text-gray-500 mt-1">{value.toFixed(0)} / {max.toFixed(0)}</p>
+    </div>
+    </div>
+  );
+}
+
 function AppContent({ onLogout }: { onLogout: () => void }) {
   // Dados iniciais de cargos
   const cargosIniciais: Record<string, { he60: number; he100: number }> = {
@@ -282,22 +322,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   };
 
   // Avatar com iniciais
-  const Avatar = ({ pessoa, tamanho = 'sm' }: { pessoa?: Pessoa; tamanho?: 'sm' | 'md' }) => {
-    const tam = tamanho === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
-    if (!pessoa) return null;
-    if (pessoa.foto_url) return (
-      <img src={pessoa.foto_url} alt={pessoa.nome}
-        className={`${tam} rounded-full object-cover flex-shrink-0`} />
-    );
-    const iniciais = pessoa.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-    const cores = ['bg-blue-500','bg-green-500','bg-purple-500','bg-orange-500','bg-red-500','bg-teal-500'];
-    const cor = cores[pessoa.id % cores.length];
-    return (
-      <div className={`${tam} ${cor} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}>
-        {iniciais}
-      </div>
-    );
-  };
+
 
   const diasNoMes = (anoMes: string) => {
     const [ano, mes] = anoMes.split('-').map(Number);
@@ -1102,27 +1127,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   };
 
 // ── Gauge ────────────────────────────────────────────────────────────────────
-  const Gauge = ({ value, max, label }: { value: number; max: number; label: string }) => {
-    const pct = Math.min((value / (max || 1)) * 100, 100);
-    const cor = pct >= 80 ? '#EF4444' : pct >= 50 ? '#F59E0B' : '#10B981';
-    const textCor = pct >= 80 ? 'text-red-700' : pct >= 50 ? 'text-yellow-700' : 'text-green-700';
-    const bg = pct >= 80 ? 'bg-red-50' : pct >= 50 ? 'bg-yellow-50' : 'bg-green-50';
-    return (
-      <div className={`flex flex-col items-center gap-4 p-6 rounded-xl ${bg}`}>
-        <svg width="120" height="120" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E7EB" strokeWidth="8"/>
-          <circle cx="60" cy="60" r="50" fill="none" stroke={cor} strokeWidth="8"
-            strokeDasharray={`${(pct/100)*314.159} 314.159`} strokeLinecap="round"
-            style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px', transition: 'stroke-dasharray 0.5s ease' }}/>
-          <text x="60" y="65" textAnchor="middle" fontSize="26" fontWeight="bold" fill="#111827">{pct.toFixed(0)}%</text>
-        </svg>
-        <div className="text-center">
-          <p className={`text-base font-bold ${textCor}`}>{label}</p>
-          <p className="text-xs text-gray-500 mt-1">{value.toFixed(0)} / {max.toFixed(0)}</p>
-        </div>
-      </div>
-    );
-  };
+
 
   // ── Loading ───────────────────────────────────────────────────────────────────
   if (!hidratado) return (
@@ -1838,7 +1843,6 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
           <MatrizCHA
             pessoas={pessoasAtivas}
             mostrarToast={mostrarToast}
-            Avatar={Avatar}
           />
         )}
 
@@ -1851,7 +1855,6 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             feriados={feriados}
             tabelaHE={tabelaHE}
             horasUteisDia={horasUteisDia}
-            Avatar={Avatar}
           />
         )}
 
@@ -1959,7 +1962,6 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             handleAdicionarFeriado={handleAdicionarFeriado}
             handleDeletarFeriado={handleDeletarFeriado}
             handleUploadFoto={handleUploadFoto}
-            Avatar={Avatar}
           />
         )}
 
@@ -1977,7 +1979,6 @@ function ConfiguracaoTab({
   handleAdicionarPessoa, handleDeletarPessoa, handleToggleAtivo,
   handleAdicionarCargo, handleDeletarCargo, handleToggleBonus,
   handleAdicionarFeriado, handleDeletarFeriado, handleUploadFoto,
-  Avatar
 }: any) {
   const inputFotoRef = (pessoaId: number) => {
     const el = document.createElement('input');
@@ -2216,7 +2217,7 @@ function ConfiguracaoTab({
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE: MatrizCHA
 // ══════════════════════════════════════════════════════════════════════════════
-function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
+function MatrizCHA({ pessoas, mostrarToast }: any) {
   const SENHAS_AVALIACAO = ['INBOUND', 'OUTBOUND', 'PROJETOS'];
   const supabaseCHA = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -3034,7 +3035,7 @@ function GuiaModal({ passo, setPasso, abaFiltro, onFechar }: {
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE: CalendarioVisual
 // ══════════════════════════════════════════════════════════════════════════════
-function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteisDia, Avatar }: any) {
+function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteisDia }: any) {
   const hoje = new Date();
   const [mesSel, setMesSel] = useState(hoje.getMonth());
   const [anoSel, setAnoSel] = useState(hoje.getFullYear());
