@@ -1129,7 +1129,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
 
   // ── Loading ───────────────────────────────────────────────────────────────────
-  if (!hidratado) return (
+  return !hidratado ? (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
       <div className="text-center">
         <div className="text-5xl mb-4">🏗️</div>
@@ -1137,10 +1137,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         <p className="text-gray-500">Conectando ao Supabase</p>
       </div>
     </div>
-  );
-
-
-  return (
+  ) : (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
 
 
