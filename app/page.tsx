@@ -56,7 +56,7 @@ function PasswordScreen({ onAuthenticate }: { onAuthenticate: () => void }) {
     <div className="min-h-screen bg-gradient-to-br from-blue-700 to-blue-900 flex items-center justify-center p-6">
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
-          <div className="text-6xl mb-3">🏭</div>
+          <div className="text-6xl mb-3">🏗️</div>
           <h2 className="text-2xl font-bold text-gray-800">Daxia People Analytics</h2>
           <p className="text-gray-500 mt-1 text-sm">Gestão de RH • Guarulhos/SP</p>
         </div>
@@ -106,6 +106,27 @@ export default function Home() {
 }
 
 // ─── App principal ─────────────────────────────────────────────────────────────
+
+// ── Funções globais de tipo ────────────────────────────────────────────────────
+function getTipoLabel(tipo: string): string {
+  return ({
+    'he-60': '⏰ HE 60%', 'he-100': '⏰ HE 100%', 'atraso': '🔴 Atraso',
+    'atestado-horas': '📋 Atestado Hora', 'falta-injustificada': '❌ Falta Injustificada',
+    'atestado': '📄 Atestado', 'saida-antecipada': '🚪 Saída Antecipada',
+    'advertencia': '⚠️ Advertência', 'férias': '🏖️ Férias'
+  } as Record<string,string>)[tipo] || tipo;
+}
+
+function getTipoCor(tipo: string): string {
+  if (tipo.includes('he')) return 'bg-blue-100 text-blue-800';
+  if (tipo === 'atraso') return 'bg-orange-100 text-orange-800';
+  if (tipo === 'falta-injustificada' || tipo === 'advertencia') return 'bg-red-100 text-red-800';
+  if (tipo === 'atestado') return 'bg-yellow-100 text-yellow-800';
+  if (tipo === 'atestado-horas' || tipo === 'saida-antecipada') return 'bg-purple-100 text-purple-800';
+  if (tipo === 'férias') return 'bg-green-100 text-green-800';
+  return 'bg-gray-100 text-gray-800';
+}
+
 function AppContent({ onLogout }: { onLogout: () => void }) {
   // Dados iniciais de cargos
   const cargosIniciais: Record<string, { he60: number; he100: number }> = {
@@ -259,25 +280,6 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       if (novo) setAuditoria(a => [novo, ...a]);
     } catch (err) { console.error('Erro auditoria:', err); }
   };
-
-  const getTipoLabel = (tipo: string) => ({
-    'he-60': '⏰ HE 60%', 'he-100': '⏰ HE 100%', 'atraso': '🔴 Atraso',
-    'atestado-horas': '📋 Atestado Hora', 'falta-injustificada': '❌ Falta Injustificada',
-    'atestado': '📄 Atestado', 'saida-antecipada': '🚪 Saída Antecipada',
-    'advertencia': '⚠️ Advertência', 'férias': '🏖️ Férias'
-  }[tipo] || tipo);
-
-  const getTipoCor = (tipo: string) => {
-    if (tipo.includes('he')) return 'bg-blue-100 text-blue-800';
-    if (tipo === 'atraso') return 'bg-orange-100 text-orange-800';
-    if (tipo === 'falta-injustificada' || tipo === 'advertencia') return 'bg-red-100 text-red-800';
-    if (tipo === 'atestado') return 'bg-yellow-100 text-yellow-800';
-    if (tipo === 'atestado-horas' || tipo === 'saida-antecipada') return 'bg-purple-100 text-purple-800';
-    if (tipo === 'férias') return 'bg-green-100 text-green-800';
-    return 'bg-gray-100 text-gray-800';
-  };
-
-  const getNomePessoa = (id: number) => pessoas.find(p => p.id === id)?.nome || 'Desconhecido';
 
   // Avatar com iniciais
   const Avatar = ({ pessoa, tamanho = 'sm' }: { pessoa?: Pessoa; tamanho?: 'sm' | 'md' }) => {
@@ -923,6 +925,32 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     setCarregando(false);
   };
 
+  // Deletar férias
+  const handleDeletarFerias = async (id: number) => {
+    const ferias = lancamentos.find((l: any) => l.id === id);
+    const pessoa = pessoas.find((p: any) => p.id === ferias?.pessoa_id);
+    if (!confirm(`Excluir férias de ${pessoa?.nome}?\n${ferias?.descricao}`)) return;
+    try {
+      await supabase.from('lancamentos').delete().eq('id', id);
+      setLancamentos(l => l.filter((x: any) => x.id !== id));
+      // Recalcular bonus: se era o único período de férias no mês, volta a 100
+      const feriasPessoa = lancamentos.filter((l: any) =>
+        l.id !== id && l.tipo === 'férias' && l.pessoa_id === ferias?.pessoa_id
+      );
+      if (feriasPessoa.length === 0) {
+        const bonus = bonusElegibilidade.find(b => b.pessoa_id === ferias?.pessoa_id);
+        if (bonus && bonus.elegivel) {
+          await supabase.from('bonus_elegibilidade').update({ valor_bonus: 100 }).eq('id', bonus.id);
+          setBonusElegibilidade(b => b.map(x => x.id === bonus.id ? { ...x, valor_bonus: 100 } : x));
+        }
+      }
+      mostrarToast('✅ Férias excluídas!');
+    } catch (err: any) {
+      mostrarToast('❌ Erro: ' + err.message, 'err');
+    }
+  };
+
+
   // Toggle bonus
   const handleToggleBonus = async (pessoaId: number, novaElegibilidade: boolean) => {
     try {
@@ -1100,7 +1128,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   if (!hidratado) return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
       <div className="text-center">
-        <div className="text-5xl mb-4">🏭</div>
+        <div className="text-5xl mb-4">🏗️</div>
         <p className="text-2xl font-bold text-blue-600 mb-2">Carregando...</p>
         <p className="text-gray-500">Conectando ao Supabase</p>
       </div>
@@ -1147,7 +1175,30 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div className="flex items-center gap-3">
-            <span className="text-4xl">🏭</span>
+            <svg viewBox="0 0 64 48" width="52" height="40" xmlns="http://www.w3.org/2000/svg">
+              {/* Corpo da empilhadeira */}
+              <rect x="18" y="20" width="28" height="18" rx="2" fill="#2563eb"/>
+              {/* Cabine */}
+              <rect x="32" y="14" width="14" height="12" rx="2" fill="#1d4ed8"/>
+              {/* Vidro cabine */}
+              <rect x="34" y="16" width="10" height="7" rx="1" fill="#93c5fd"/>
+              {/* Mastro */}
+              <rect x="14" y="8" width="4" height="30" rx="1" fill="#1e40af"/>
+              {/* Garfo superior */}
+              <rect x="2" y="10" width="16" height="3" rx="1" fill="#1e40af"/>
+              {/* Garfo inferior */}
+              <rect x="2" y="16" width="16" height="3" rx="1" fill="#1e40af"/>
+              {/* Carga no garfo */}
+              <rect x="2" y="7" width="10" height="9" rx="1" fill="#fbbf24" opacity="0.9"/>
+              {/* Roda traseira */}
+              <circle cx="40" cy="38" r="5" fill="#1e293b"/>
+              <circle cx="40" cy="38" r="2.5" fill="#64748b"/>
+              {/* Roda dianteira */}
+              <circle cx="22" cy="38" r="5" fill="#1e293b"/>
+              <circle cx="22" cy="38" r="2.5" fill="#64748b"/>
+              {/* Contrapeso */}
+              <rect x="44" y="24" width="8" height="12" rx="2" fill="#1e40af"/>
+            </svg>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-blue-700">Daxia People Analytics</h1>
               <p className="text-gray-500 text-sm">Guarulhos/SP • Sincronizado ✅</p>
@@ -1610,6 +1661,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
                           <th className="text-left py-3 px-3">Setor</th>
                           <th className="text-left py-3 px-3">Início</th>
                           <th className="text-left py-3 px-3">Descrição</th>
+                          <th className="text-center py-3 px-3">Ação</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1626,6 +1678,12 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
                               <td className="py-2 px-3 text-xs text-gray-500">{p?.setor}</td>
                               <td className="py-2 px-3">{new Date(l.data+'T00:00:00').toLocaleDateString('pt-BR')}</td>
                               <td className="py-2 px-3 text-xs text-gray-600">{l.descricao}</td>
+                              <td className="py-2 px-3 text-center">
+                                <button onClick={() => handleDeletarFerias(l.id)}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
+                                  🗑️
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -1775,8 +1833,6 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             tabelaHE={tabelaHE}
             horasUteisDia={horasUteisDia}
             Avatar={Avatar}
-            getTipoLabel={getTipoLabel}
-            getTipoCor={getTipoCor}
           />
         )}
 
@@ -2777,7 +2833,7 @@ const PASSOS_GUIA = [
   {
     aba: null,
     titulo: '👋 Bem-vindo ao Daxia People Analytics!',
-    icone: '🏭',
+    icone: '🏗️',
     descricao: 'Este sistema foi feito para a gestão de RH da operação logística em Guarulhos/SP. Vamos te mostrar como usar cada parte do sistema em poucos passos.',
     dica: '💡 Este guia aparece automaticamente na primeira vez. Você pode acessá-lo novamente pelo botão ❓ no canto da tela.',
   },
@@ -2836,6 +2892,27 @@ const PASSOS_GUIA = [
     icone: '⚙️',
     descricao: 'Central de cadastros e parâmetros do sistema:\n\n• Metas de HE (R$) e Absenteísmo (%)\n• Horas úteis por dia (usado no cálculo de absenteísmo)\n• Cadastro de cargos com valores de HE 60% e 100%\n• Cadastro de colaboradores com cargo e setor\n• Ativar/inativar colaboradores\n• Cadastro de feriados regionais e pontos facultativos\n• Upload de foto para cada colaborador',
     dica: '💡 Sempre cadastre os feriados locais de Guarulhos para os Insights funcionarem corretamente.',
+  },
+  {
+    aba: 'calendario',
+    titulo: '📅 Calendário Visual',
+    icone: '📅',
+    descricao: 'Visualize todos os lançamentos em formato de calendário mensal:\n\n• Cada dia é colorido conforme o tipo de ocorrência\n  🔵 Azul = HE | 🔴 Vermelho = Absenteísmo | 🟡 Amarelo = HE + Abs\n  🟢 Verde = Férias | 🟣 Roxo = Advertência | 🟠 Laranja = Feriado\n• Clique em qualquer dia para ver todos os lançamentos daquele dia\n• Feriados cadastrados aparecem marcados automaticamente\n• Use as setas para navegar entre os meses\n• Filtro por setor disponível no canto superior direito',
+    dica: '💡 Use o calendário para identificar rapidamente dias críticos e padrões visuais que as tabelas não mostram.',
+  },
+  {
+    aba: 'comparativo',
+    titulo: '📊 Comparativo Mês a Mês',
+    icone: '📊',
+    descricao: 'Compare HE e Absenteísmo entre o mesmo mês em até 3 anos:\n\n• Alterne entre HE (R$) e Absenteísmo (%) nos botões do topo\n• Barras lado a lado para visualizar a evolução ano a ano\n• O sistema vai acumulando dados — começa com o que existe e expande até o trienio completo\n• Tabela detalhada abaixo com todos os valores\n• Botão "Exportar Excel" para levar o comparativo para apresentações\n• Filtro por setor disponível',
+    dica: '💡 Compare o mesmo mês entre anos para identificar tendências sazonais — ex: maio sempre tem mais HE no fechamento?',
+  },
+  {
+    aba: 'calor',
+    titulo: '🌡️ Mapa de Calor',
+    icone: '🌡️',
+    descricao: 'Identifique padrões visuais de concentração de HE e Absenteísmo:\n\n• Por dia da semana: acumulado histórico completo — qual dia da semana concentra mais ocorrências?\n• Por calendário: visão mensal com intensidade de cor por dia\n  ⬜ Sem ocorrências → 🟥 Alta concentração\n• Alterne entre HE e Absenteísmo nos botões do topo\n• Insight automático destaca o pico do período\n• Filtro por setor disponível',
+    dica: '💡 O mapa de calor por dia da semana é ideal para identificar padrões recorrentes como "segunda-feira tem mais faltas".',
   },
   {
     aba: null,
@@ -2938,7 +3015,7 @@ function GuiaModal({ passo, setPasso, abaFiltro, onFechar }: {
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE: CalendarioVisual
 // ══════════════════════════════════════════════════════════════════════════════
-function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteisDia, Avatar, getTipoLabel, getTipoCor }: any) {
+function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteisDia, Avatar }: any) {
   const hoje = new Date();
   const [mesSel, setMesSel] = useState(hoje.getMonth());
   const [anoSel, setAnoSel] = useState(hoje.getFullYear());
@@ -3228,6 +3305,28 @@ function ComparativoMeses({ lancamentos, pessoas, tabelaHE, horasUteisDia }: any
   const coresAnosTexto = ['text-blue-400', 'text-blue-600', 'text-blue-800'];
   const coresAnosAbs = ['bg-red-300', 'bg-red-500', 'bg-red-700'];
 
+  const exportarTrienio = () => {
+    const nomeMesExp = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const linhas: string[] = [];
+    const cabAnos = anosUnicos.map(a => `HE ${a} (R$);Abs ${a} (%)`).join(';');
+    linhas.push(`Mês;${cabAnos}`);
+    mesesUnicos.forEach(mes => {
+      const row = [nomeMesExp[mes]];
+      anosUnicos.forEach(ano => {
+        const dado = dadosMeses.find(d => d.mes === mes && d.ano === ano);
+        row.push(dado?.temDados ? dado.totalHE.toFixed(2) : '-');
+        row.push(dado?.temDados ? dado.taxaAbs.toFixed(2) : '-');
+      });
+      linhas.push(row.join(';'));
+    });
+    const blob = new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Comparativo_Trienio_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+
   if (dadosComDados.length === 0) return (
     <div className="bg-white rounded-xl shadow p-8 text-center pb-20 md:pb-0">
       <p className="text-4xl mb-3">📊</p>
@@ -3254,6 +3353,10 @@ function ComparativoMeses({ lancamentos, pessoas, tabelaHE, horasUteisDia }: any
           <option value="">Todos os setores</option>
           {['Inbound','Outbound','Projetos/Estoques/Custos'].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <button onClick={exportarTrienio}
+          className="px-4 py-2 rounded-lg font-bold text-sm bg-green-600 hover:bg-green-700 text-white">
+          📥 Exportar Excel
+        </button>
       </div>
 
       {/* Legenda de anos */}
