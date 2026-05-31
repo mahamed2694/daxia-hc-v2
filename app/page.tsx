@@ -1186,50 +1186,35 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
                   <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.05"/>
                 </linearGradient>
               </defs>
-              {/* Base/chão reflexo */}
               <ellipse cx="42" cy="56" rx="28" ry="3" fill="#38bdf8" opacity="0.15"/>
-              {/* Corpo principal */}
               <rect x="22" y="26" width="36" height="22" rx="2" fill="url(#bodyGrad)" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              {/* Linhas de detalhe corpo */}
               <line x1="22" y1="34" x2="58" y2="34" stroke="#38bdf8" strokeWidth="0.5" opacity="0.6"/>
               <line x1="40" y1="26" x2="40" y2="48" stroke="#38bdf8" strokeWidth="0.5" opacity="0.4"/>
-              {/* Cabine */}
               <rect x="38" y="16" width="18" height="16" rx="2" fill="url(#bodyGrad)" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              {/* Vidro cabine com brilho */}
               <rect x="40" y="18" width="14" height="10" rx="1" fill="#38bdf8" opacity="0.18" stroke="#7dd3fc" strokeWidth="0.5"/>
               <line x1="40" y1="18" x2="54" y2="28" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.5"/>
-              {/* Mastro vertical */}
               <rect x="16" y="8" width="5" height="38" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
               <line x1="18" y1="8" x2="18" y2="46" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.7"/>
-              {/* Garfo superior */}
               <rect x="2" y="12" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              {/* Garfo inferior */}
               <rect x="2" y="20" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              {/* Carga holográfica */}
               <rect x="2" y="8" width="12" height="12" rx="1" fill="#38bdf8" opacity="0.1" stroke="#7dd3fc" strokeWidth="0.8" strokeDasharray="2,1"/>
               <line x1="2" y1="14" x2="14" y2="14" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
               <line x1="8" y1="8" x2="8" y2="20" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
-              {/* Roda dianteira */}
               <circle cx="28" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
               <circle cx="28" cy="48" r="3" fill="none" stroke="#7dd3fc" strokeWidth="0.8"/>
               <circle cx="28" cy="48" r="1" fill="#38bdf8" opacity="0.8"/>
-              {/* Roda traseira */}
               <circle cx="50" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
               <circle cx="50" cy="48" r="3" fill="none" stroke="#7dd3fc" strokeWidth="0.8"/>
               <circle cx="50" cy="48" r="1" fill="#38bdf8" opacity="0.8"/>
-              {/* Contrapeso */}
               <rect x="56" y="30" width="8" height="14" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
               <line x1="56" y1="37" x2="64" y2="37" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
-              {/* Pontos de luz nos cantos */}
               <circle cx="22" cy="26" r="1" fill="#38bdf8" opacity="0.9"/>
               <circle cx="58" cy="26" r="1" fill="#38bdf8" opacity="0.9"/>
               <circle cx="22" cy="48" r="1" fill="#38bdf8" opacity="0.9"/>
               <circle cx="58" cy="48" r="1" fill="#38bdf8" opacity="0.9"/>
               <circle cx="16" cy="8" r="1.2" fill="#7dd3fc" opacity="0.9"/>
-              {/* Linhas de scan animadas */}
               <line x1="16" y1="28" x2="65" y2="28" stroke="#38bdf8" strokeWidth="0.3" opacity="0.3" strokeDasharray="3,2"/>
               <line x1="16" y1="38" x2="65" y2="38" stroke="#38bdf8" strokeWidth="0.3" opacity="0.3" strokeDasharray="3,2"/>
-            </svg>
             </svg>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-blue-700">Daxia People Analytics</h1>
