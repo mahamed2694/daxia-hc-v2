@@ -1176,38 +1176,30 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         <div className="mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div className="flex items-center gap-3">
             <svg viewBox="0 0 80 60" width="64" height="48" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-                  <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15"/>
-                  <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.05"/>
-                </linearGradient>
-              </defs>
-              <ellipse cx="42" cy="56" rx="28" ry="3" fill="#38bdf8" opacity="0.15"/>
-              <rect x="22" y="26" width="36" height="22" rx="2" fill="url(#bodyGrad)" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              <line x1="22" y1="34" x2="58" y2="34" stroke="#38bdf8" strokeWidth="0.5" opacity="0.6"/>
+              <ellipse cx="42" cy="57" rx="26" ry="2.5" fill="#38bdf8" opacity="0.2"/>
+              <rect x="22" y="26" width="36" height="22" rx="2" fill="none" stroke="#38bdf8" strokeWidth="1.2" opacity="0.9"/>
+              <rect x="22" y="26" width="36" height="22" rx="2" fill="#38bdf8" opacity="0.08"/>
+              <line x1="22" y1="34" x2="58" y2="34" stroke="#38bdf8" strokeWidth="0.5" opacity="0.5"/>
               <line x1="40" y1="26" x2="40" y2="48" stroke="#38bdf8" strokeWidth="0.5" opacity="0.4"/>
-              <rect x="38" y="16" width="18" height="16" rx="2" fill="url(#bodyGrad)" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              <rect x="40" y="18" width="14" height="10" rx="1" fill="#38bdf8" opacity="0.18" stroke="#7dd3fc" strokeWidth="0.5"/>
+              <rect x="38" y="16" width="18" height="16" rx="2" fill="none" stroke="#38bdf8" strokeWidth="1.2" opacity="0.9"/>
+              <rect x="38" y="16" width="18" height="16" rx="2" fill="#38bdf8" opacity="0.1"/>
+              <rect x="40" y="18" width="14" height="10" rx="1" fill="#7dd3fc" opacity="0.15" stroke="#7dd3fc" strokeWidth="0.5"/>
               <line x1="40" y1="18" x2="54" y2="28" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.5"/>
-              <rect x="16" y="8" width="5" height="38" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
-              <line x1="18" y1="8" x2="18" y2="46" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.7"/>
-              <rect x="2" y="12" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              <rect x="2" y="20" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              <rect x="2" y="8" width="12" height="12" rx="1" fill="#38bdf8" opacity="0.1" stroke="#7dd3fc" strokeWidth="0.8" strokeDasharray="2,1"/>
+              <rect x="16" y="8" width="5" height="38" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1.5" opacity="0.9"/>
+              <line x1="18" y1="8" x2="18" y2="46" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
+              <rect x="2" y="12" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1.2" opacity="0.9"/>
+              <rect x="2" y="20" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1.2" opacity="0.9"/>
+              <rect x="2" y="8" width="12" height="12" rx="1" fill="#38bdf8" opacity="0.08" stroke="#7dd3fc" strokeWidth="0.8" strokeDasharray="2,1"/>
               <line x1="2" y1="14" x2="14" y2="14" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
               <line x1="8" y1="8" x2="8" y2="20" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
-              <circle cx="28" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
+              <circle cx="28" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.5" opacity="0.9"/>
               <circle cx="28" cy="48" r="3" fill="none" stroke="#7dd3fc" strokeWidth="0.8"/>
               <circle cx="28" cy="48" r="1" fill="#38bdf8" opacity="0.8"/>
-              <circle cx="50" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
+              <circle cx="50" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.5" opacity="0.9"/>
               <circle cx="50" cy="48" r="3" fill="none" stroke="#7dd3fc" strokeWidth="0.8"/>
               <circle cx="50" cy="48" r="1" fill="#38bdf8" opacity="0.8"/>
-              <rect x="56" y="30" width="8" height="14" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
-              <line x1="56" y1="37" x2="64" y2="37" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
+              <rect x="56" y="30" width="8" height="14" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1" opacity="0.8"/>
+              <line x1="56" y1="37" x2="64" y2="37" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.5"/>
               <circle cx="22" cy="26" r="1" fill="#38bdf8" opacity="0.9"/>
               <circle cx="58" cy="26" r="1" fill="#38bdf8" opacity="0.9"/>
               <circle cx="22" cy="48" r="1" fill="#38bdf8" opacity="0.9"/>
