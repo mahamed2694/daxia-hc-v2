@@ -1172,7 +1172,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         {/* Navegação — desktop topo, mobile bottom */}
         <div className="hidden md:flex gap-1 mb-6 border-b-2 border-gray-200 overflow-x-auto">
           {[
-            ['resumos','📊 Resumos'],['dashboard','📈 Dashboard'],['lancamentos','📝 Lançamentos'],
+            ['resumos','📊 Resumos'],['dashboard','📈 Dashboard'],['calendario','📅 Calendário'],['comparativo','📊 Comparativo'],['calor','🌡️ Mapa Calor'],['lancamentos','📝 Lançamentos'],
             ['ferias','🏖️ Férias'],['bonus','🎁 Bônus'],['cha','🧠 Matriz CHA'],['auditoria','🔍 Auditoria'],['configuracao','⚙️ Config']
           ].map(([id, label]) => (
             <button key={id} onClick={() => setAbaAtiva(id)}
@@ -1186,7 +1186,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         {/* Menu mobile fixo */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 flex justify-around py-2 shadow-lg">
           {[
-            ['resumos','📊'],['lancamentos','📝'],['ferias','🏖️'],['bonus','🎁'],['cha','🧠'],['configuracao','⚙️']
+            ['resumos','📊'],['calendario','📅'],['comparativo','📊'],['calor','🌡️'],['lancamentos','📝'],['bonus','🎁'],['configuracao','⚙️']
           ].map(([id, icon]) => (
             <button key={id} onClick={() => setAbaAtiva(id)}
               className={`flex flex-col items-center text-xs px-2 py-1 rounded-lg
@@ -1762,6 +1762,40 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             pessoas={pessoasAtivas}
             mostrarToast={mostrarToast}
             Avatar={Avatar}
+          />
+        )}
+
+
+        {/* ══ ABA: CALENDÁRIO ══ */}
+        {abaAtiva === 'calendario' && (
+          <CalendarioVisual
+            lancamentos={lancamentos}
+            pessoas={pessoas}
+            feriados={feriados}
+            tabelaHE={tabelaHE}
+            horasUteisDia={horasUteisDia}
+            Avatar={Avatar}
+            getTipoLabel={getTipoLabel}
+            getTipoCor={getTipoCor}
+          />
+        )}
+
+        {/* ══ ABA: COMPARATIVO ══ */}
+        {abaAtiva === 'comparativo' && (
+          <ComparativoMeses
+            lancamentos={lancamentos}
+            pessoas={pessoas}
+            tabelaHE={tabelaHE}
+            horasUteisDia={horasUteisDia}
+          />
+        )}
+
+        {/* ══ ABA: MAPA DE CALOR ══ */}
+        {abaAtiva === 'calor' && (
+          <MapaCalor
+            lancamentos={lancamentos}
+            pessoas={pessoas}
+            horasUteisDia={horasUteisDia}
           />
         )}
 
@@ -2897,6 +2931,666 @@ function GuiaModal({ passo, setPasso, abaFiltro, onFechar }: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: CalendarioVisual
+// ══════════════════════════════════════════════════════════════════════════════
+function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteisDia, Avatar, getTipoLabel, getTipoCor }: any) {
+  const hoje = new Date();
+  const [mesSel, setMesSel] = useState(hoje.getMonth());
+  const [anoSel, setAnoSel] = useState(hoje.getFullYear());
+  const [setorFiltro, setSetorFiltro] = useState('');
+  const [diaSelecionado, setDiaSelecionado] = useState<string|null>(null);
+
+  const setores = ['', 'Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
+  const nomeMes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const feriadosSet = new Set(feriados.map((f: any) => f.data));
+
+  const primeiroDia = new Date(anoSel, mesSel, 1).getDay();
+  const totalDias = new Date(anoSel, mesSel + 1, 0).getDate();
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dataStr = (dia: number) => `${anoSel}-${pad(mesSel + 1)}-${pad(dia)}`;
+
+  const pessoasFiltro = setorFiltro ? pessoas.filter((p: any) => p.setor === setorFiltro) : pessoas;
+  const idsFiltro = new Set(pessoasFiltro.map((p: any) => p.id));
+
+  const lancsPorDia = (dia: number) => {
+    const data = dataStr(dia);
+    return lancamentos.filter((l: any) => l.data === data && idsFiltro.has(l.pessoa_id));
+  };
+
+  const corDia = (dia: number) => {
+    const data = dataStr(dia);
+    const d = new Date(data + 'T00:00:00');
+    const diaSem = d.getDay();
+    if (diaSem === 0 || diaSem === 6) return 'bg-gray-100';
+    if (feriadosSet.has(data)) return 'bg-orange-100';
+    const lancs = lancsPorDia(dia);
+    if (lancs.length === 0) return 'bg-white hover:bg-blue-50';
+    const temHE = lancs.some((l: any) => l.tipo.includes('he'));
+    const temAbs = lancs.some((l: any) => ['falta-injustificada','atestado','atraso','saida-antecipada'].includes(l.tipo));
+    const temFerias = lancs.some((l: any) => l.tipo === 'férias');
+    const temAdv = lancs.some((l: any) => l.tipo === 'advertencia');
+    if (temAdv) return 'bg-purple-100 hover:bg-purple-200';
+    if (temAbs && temHE) return 'bg-yellow-100 hover:bg-yellow-200';
+    if (temAbs) return 'bg-red-100 hover:bg-red-200';
+    if (temHE) return 'bg-blue-100 hover:bg-blue-200';
+    if (temFerias) return 'bg-green-100 hover:bg-green-200';
+    return 'bg-gray-50 hover:bg-gray-100';
+  };
+
+  const mudarMes = (delta: number) => {
+    let novoMes = mesSel + delta;
+    let novoAno = anoSel;
+    if (novoMes > 11) { novoMes = 0; novoAno++; }
+    if (novoMes < 0) { novoMes = 11; novoAno--; }
+    setMesSel(novoMes);
+    setAnoSel(novoAno);
+    setDiaSelecionado(null);
+  };
+
+  const lancsDiaSel = diaSelecionado
+    ? lancamentos.filter((l: any) => l.data === diaSelecionado && idsFiltro.has(l.pessoa_id))
+    : [];
+
+  const feriadoDiaSel = diaSelecionado ? feriados.find((f: any) => f.data === diaSelecionado) : null;
+
+  return (
+    <div className="pb-20 md:pb-0 space-y-4">
+      {/* Controles */}
+      <div className="bg-white rounded-xl shadow p-4">
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <div className="flex items-center gap-2">
+            <button onClick={() => mudarMes(-1)}
+              className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center">
+              ‹
+            </button>
+            <h2 className="text-lg font-bold text-gray-700 min-w-[180px] text-center">
+              {nomeMes[mesSel]} {anoSel}
+            </h2>
+            <button onClick={() => mudarMes(1)}
+              className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center">
+              ›
+            </button>
+            <button onClick={() => { setMesSel(hoje.getMonth()); setAnoSel(hoje.getFullYear()); }}
+              className="px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-bold hover:bg-blue-200">
+              Hoje
+            </button>
+          </div>
+          <select value={setorFiltro} onChange={e => setSetorFiltro(e.target.value)}
+            className="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+            <option value="">Todos os setores</option>
+            {['Inbound','Outbound','Projetos/Estoques/Custos'].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Legenda */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        {[
+          ['bg-blue-100','HE'],['bg-red-100','Absenteísmo'],['bg-yellow-100','HE + Abs'],
+          ['bg-green-100','Férias'],['bg-purple-100','Advertência'],
+          ['bg-orange-100','Feriado'],['bg-gray-100','Fim de semana'],
+        ].map(([cor, label]) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className={`w-3 h-3 rounded ${cor}`}/>
+            <span className="text-gray-600">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Grade do calendário */}
+      <div className="bg-white rounded-xl shadow p-4">
+        {/* Cabeçalho dias da semana */}
+        <div className="grid grid-cols-7 mb-2">
+          {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d => (
+            <div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>
+          ))}
+        </div>
+        {/* Dias */}
+        <div className="grid grid-cols-7 gap-1">
+          {/* Espaços vazios antes do primeiro dia */}
+          {Array.from({ length: primeiroDia }).map((_, i) => <div key={`vazio-${i}`}/>)}
+          {/* Dias do mês */}
+          {Array.from({ length: totalDias }).map((_, i) => {
+            const dia = i + 1;
+            const data = dataStr(dia);
+            const lancs = lancsPorDia(dia);
+            const ehHoje = data === hoje.toISOString().split('T')[0];
+            const selecionado = diaSelecionado === data;
+            const feriado = feriadosSet.has(data);
+            const diaSem = new Date(data + 'T00:00:00').getDay();
+            const fimSemana = diaSem === 0 || diaSem === 6;
+
+            return (
+              <button key={dia}
+                onClick={() => setDiaSelecionado(selecionado ? null : data)}
+                className={`relative rounded-lg p-1 min-h-[52px] text-left transition-all
+                  ${corDia(dia)}
+                  ${selecionado ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
+                  ${ehHoje ? 'ring-2 ring-blue-400' : ''}
+                  ${fimSemana ? 'opacity-70' : 'cursor-pointer'}`}>
+                <span className={`text-xs font-bold block ${ehHoje ? 'text-blue-600' : fimSemana ? 'text-gray-400' : 'text-gray-700'}`}>
+                  {dia}
+                  {feriado && <span className="ml-1 text-orange-500">🗓</span>}
+                </span>
+                {/* Indicadores de lançamentos */}
+                {lancs.length > 0 && (
+                  <div className="flex flex-wrap gap-0.5 mt-0.5">
+                    {lancs.slice(0, 3).map((l: any, idx: number) => (
+                      <div key={idx} className={`w-1.5 h-1.5 rounded-full
+                        ${l.tipo.includes('he') ? 'bg-blue-500' :
+                          l.tipo === 'férias' ? 'bg-green-500' :
+                          l.tipo === 'advertencia' ? 'bg-purple-500' :
+                          'bg-red-500'}`}/>
+                    ))}
+                    {lancs.length > 3 && <span className="text-gray-400" style={{fontSize:'8px'}}>+{lancs.length-3}</span>}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Painel do dia selecionado */}
+      {diaSelecionado && (
+        <div className="bg-white rounded-xl shadow p-5">
+          <h3 className="font-bold text-gray-700 mb-3">
+            📅 {new Date(diaSelecionado + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+            {feriadoDiaSel && <span className="ml-2 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-normal">{feriadoDiaSel.descricao}</span>}
+          </h3>
+          {lancsDiaSel.length === 0 ? (
+            <p className="text-gray-400 text-sm">Nenhum lançamento neste dia{setorFiltro ? ` para ${setorFiltro}` : ''}.</p>
+          ) : (
+            <div className="space-y-2">
+              {lancsDiaSel.map((l: any) => {
+                const p = pessoas.find((x: any) => x.id === l.pessoa_id);
+                const tab = tabelaHE[p?.cargo || ''];
+                const mins = +(l.minutos || 0);
+                const val = l.tipo === 'he-60' ? (tab?.he60||0)*(mins/60)
+                  : l.tipo === 'he-100' ? (tab?.he100||0)*(mins/60) : 0;
+                return (
+                  <div key={l.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Avatar pessoa={p} tamanho="sm"/>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-800">{p?.nome}</p>
+                      <p className="text-xs text-gray-500">{p?.setor}</p>
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${getTipoCor(l.tipo)}`}>
+                      {getTipoLabel(l.tipo)}
+                    </span>
+                    {mins > 0 && <span className="text-xs text-gray-500">{mins}min</span>}
+                    {val > 0 && <span className="text-xs font-bold text-blue-600">R$ {val.toFixed(2)}</span>}
+                    {l.descricao && <span className="text-xs text-gray-400 hidden md:block">{l.descricao}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: ComparativoMeses
+// ══════════════════════════════════════════════════════════════════════════════
+function ComparativoMeses({ lancamentos, pessoas, tabelaHE, horasUteisDia }: any) {
+  const [metricaSel, setMetricaSel] = useState<'he'|'abs'>('he');
+  const [setorFiltro, setSetorFiltro] = useState('');
+
+  const nomeMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const hoje = new Date();
+  const mesAtual = hoje.getMonth();
+  const anoAtual = hoje.getFullYear();
+
+  // Gerar trienio: mesmo mês nos últimos 3 anos disponíveis
+  const mesesComparacao = useMemo(() => {
+    const resultado: { ano: number; mes: number; label: string }[] = [];
+    for (let anosAtras = 2; anosAtras >= 0; anosAtras--) {
+      const ano = anoAtual - anosAtras;
+      // Incluir todos os meses com dados, até o mês atual
+      const mesLimite = ano === anoAtual ? mesAtual : 11;
+      for (let mes = 0; mes <= mesLimite; mes++) {
+        resultado.push({ ano, mes, label: `${nomeMes[mes]}/${ano}` });
+      }
+    }
+    return resultado;
+  }, [mesAtual, anoAtual]);
+
+  const pessoasFiltro = setorFiltro
+    ? pessoas.filter((p: any) => p.setor === setorFiltro)
+    : pessoas;
+  const idsFiltro = new Set(pessoasFiltro.map((p: any) => p.id));
+
+  const calcularMes = (ano: number, mes: number) => {
+    const ini = `${ano}-${String(mes+1).padStart(2,'0')}-01`;
+    const fim = `${ano}-${String(mes+1).padStart(2,'0')}-${String(new Date(ano,mes+1,0).getDate()).padStart(2,'0')}`;
+    const lancs = lancamentos.filter((l: any) =>
+      l.data >= ini && l.data <= fim && idsFiltro.has(l.pessoa_id)
+    );
+
+    // HE
+    let totalHE = 0;
+    lancs.filter((l: any) => l.tipo.includes('he')).forEach((l: any) => {
+      const p = pessoas.find((x: any) => x.id === l.pessoa_id);
+      const tab = tabelaHE[p?.cargo || ''];
+      const mins = +(l.minutos || 0);
+      totalHE += l.tipo === 'he-60' ? (tab?.he60||0)*(mins/60) : (tab?.he100||0)*(mins/60);
+    });
+
+    // Absenteísmo
+    let totalAbs = 0;
+    const diasUteis = (() => {
+      let count = 0;
+      for (let d = new Date(ini+'T00:00:00'); d <= new Date(fim+'T00:00:00'); d.setDate(d.getDate()+1)) {
+        const dia = d.getDay();
+        if (dia >= 1 && dia <= 5) count++;
+      }
+      return count;
+    })();
+    const horasDisp = horasUteisDia * pessoasFiltro.filter((p: any) => p.ativo !== false).length * diasUteis;
+    lancs.forEach((l: any) => {
+      if (l.tipo === 'falta-injustificada' || l.tipo === 'atestado') totalAbs += horasUteisDia;
+      else if (l.tipo === 'atestado-horas') totalAbs += +(l.horas || horasUteisDia);
+      else if (l.tipo === 'atraso') totalAbs += +(l.minutos||0)/60;
+      else if (l.tipo === 'saida-antecipada') totalAbs += +(l.minutos||0)/60;
+    });
+    const taxaAbs = horasDisp > 0 ? (totalAbs/horasDisp*100) : 0;
+    const temDados = lancs.length > 0;
+
+    return { totalHE, taxaAbs, temDados, label: `${nomeMes[mes]}/${ano}` };
+  };
+
+  const dadosMeses = useMemo(() =>
+    mesesComparacao.map(m => ({ ...calcularMes(m.ano, m.mes), ano: m.ano, mes: m.mes })),
+    [mesesComparacao, lancamentos, pessoasFiltro, tabelaHE, horasUteisDia]
+  );
+
+  // Filtrar apenas meses com dados
+  const dadosComDados = dadosMeses.filter(d => d.temDados);
+
+  // Agrupar por mês (para comparação entre anos)
+  const mesesUnicos = [...new Set(dadosComDados.map(d => d.mes))];
+  const anosUnicos = [...new Set(dadosMeses.map(d => d.ano))].sort();
+
+  // Valor máximo para escala das barras
+  const maxValorHE = Math.max(...dadosComDados.map(d => d.totalHE), 1);
+  const maxValorAbs = Math.max(...dadosComDados.map(d => d.taxaAbs), 1);
+
+  const coresAnos = ['bg-blue-400', 'bg-blue-600', 'bg-blue-800'];
+  const coresAnosTexto = ['text-blue-400', 'text-blue-600', 'text-blue-800'];
+  const coresAnosAbs = ['bg-red-300', 'bg-red-500', 'bg-red-700'];
+
+  if (dadosComDados.length === 0) return (
+    <div className="bg-white rounded-xl shadow p-8 text-center pb-20 md:pb-0">
+      <p className="text-4xl mb-3">📊</p>
+      <p className="text-gray-400">Sem dados suficientes para comparação. Registre lançamentos para que os comparativos apareçam.</p>
+    </div>
+  );
+
+  return (
+    <div className="pb-20 md:pb-0 space-y-6">
+      {/* Controles */}
+      <div className="bg-white rounded-xl shadow p-4 flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex gap-2">
+          <button onClick={() => setMetricaSel('he')}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${metricaSel==='he'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            💰 Horas Extras
+          </button>
+          <button onClick={() => setMetricaSel('abs')}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${metricaSel==='abs'?'bg-red-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            📉 Absenteísmo
+          </button>
+        </div>
+        <select value={setorFiltro} onChange={e => setSetorFiltro(e.target.value)}
+          className="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="">Todos os setores</option>
+          {['Inbound','Outbound','Projetos/Estoques/Custos'].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {/* Legenda de anos */}
+      <div className="flex gap-4 flex-wrap">
+        {anosUnicos.map((ano, i) => (
+          <div key={ano} className="flex items-center gap-2">
+            <div className={`w-4 h-4 rounded ${metricaSel==='he'?coresAnos[i]:coresAnosAbs[i]}`}/>
+            <span className="text-sm font-bold text-gray-600">{ano}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Gráfico de barras por mês */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <h2 className="text-lg font-bold text-gray-700 mb-1">
+          {metricaSel === 'he' ? '💰 Custo de Horas Extras por Mês' : '📉 Taxa de Absenteísmo por Mês'}
+        </h2>
+        <p className="text-xs text-gray-400 mb-5">Comparativo dos últimos 3 anos • Apenas meses com dados</p>
+
+        <div className="space-y-4">
+          {mesesUnicos.map(mes => {
+            const dadosMes = anosUnicos.map(ano => dadosMeses.find(d => d.mes === mes && d.ano === ano));
+            const algumTemDado = dadosMes.some(d => d?.temDados);
+            if (!algumTemDado) return null;
+
+            return (
+              <div key={mes}>
+                <p className="text-sm font-bold text-gray-600 mb-2">{nomeMes[mes]}</p>
+                <div className="space-y-1.5">
+                  {dadosMes.map((dado, i) => {
+                    if (!dado) return null;
+                    const valor = metricaSel === 'he' ? dado.totalHE : dado.taxaAbs;
+                    const max = metricaSel === 'he' ? maxValorHE : maxValorAbs;
+                    const pct = Math.max((valor/max)*100, valor > 0 ? 2 : 0);
+                    const corBarra = metricaSel === 'he' ? coresAnos[i] : coresAnosAbs[i];
+                    return (
+                      <div key={dado.ano} className="flex items-center gap-3">
+                        <span className="text-xs text-gray-400 w-8 text-right">{dado.ano}</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                          {dado.temDados ? (
+                            <div className={`h-6 rounded-full flex items-center px-2 transition-all duration-700 ${corBarra}`}
+                              style={{ width: `${pct}%`, minWidth: valor > 0 ? '40px' : '0' }}>
+                              <span className="text-white text-xs font-bold whitespace-nowrap">
+                                {metricaSel === 'he' ? `R$${valor.toFixed(0)}` : `${valor.toFixed(1)}%`}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="h-6 flex items-center px-2">
+                              <span className="text-gray-300 text-xs">sem dados</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tabela resumo */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <h2 className="text-lg font-bold text-gray-700 mb-4">📋 Tabela Comparativa</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[500px]">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="text-left py-2 px-3 font-bold text-gray-600">Mês</th>
+                {anosUnicos.map(ano => (
+                  <th key={ano} className="text-center py-2 px-3 font-bold text-gray-600" colSpan={2}>{ano}</th>
+                ))}
+              </tr>
+              <tr className="bg-gray-50 text-xs text-gray-400">
+                <th className="py-1 px-3"/>
+                {anosUnicos.map(ano => (
+                  <>
+                    <th key={`${ano}-he`} className="py-1 px-2 text-center">HE (R$)</th>
+                    <th key={`${ano}-abs`} className="py-1 px-2 text-center">Abs (%)</th>
+                  </>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {mesesUnicos.map((mes, i) => (
+                <tr key={mes} className={i%2===0?'bg-gray-50':'bg-white'}>
+                  <td className="py-2 px-3 font-semibold text-gray-700">{nomeMes[mes]}</td>
+                  {anosUnicos.map(ano => {
+                    const dado = dadosMeses.find(d => d.mes === mes && d.ano === ano);
+                    return (
+                      <>
+                        <td key={`${ano}-he`} className="py-2 px-2 text-center text-blue-600 font-bold text-xs">
+                          {dado?.temDados ? `R$${dado.totalHE.toFixed(0)}` : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td key={`${ano}-abs`} className="py-2 px-2 text-center text-red-600 font-bold text-xs">
+                          {dado?.temDados ? `${dado.taxaAbs.toFixed(1)}%` : <span className="text-gray-300">—</span>}
+                        </td>
+                      </>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: MapaCalor
+// ══════════════════════════════════════════════════════════════════════════════
+function MapaCalor({ lancamentos, pessoas, horasUteisDia }: any) {
+  const [metricaSel, setMetricaSel] = useState<'abs'|'he'>('abs');
+  const [setorFiltro, setSetorFiltro] = useState('');
+  const [visaoSel, setVisaoSel] = useState<'semana'|'calendario'>('semana');
+
+  const hoje = new Date();
+  const [mesSel, setMesSel] = useState(hoje.getMonth());
+  const [anoSel, setAnoSel] = useState(hoje.getFullYear());
+  const nomeMes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+  const pessoasFiltro = setorFiltro ? pessoas.filter((p: any) => p.setor === setorFiltro) : pessoas;
+  const idsFiltro = new Set(pessoasFiltro.map((p: any) => p.id));
+
+  const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  // ── Visão por dia da semana ───────────────────────────────────────────────────
+  const dadosPorDiaSemana = useMemo(() => {
+    const contagem: Record<number, { valor: number; count: number }> = {};
+    for (let i = 0; i < 7; i++) contagem[i] = { valor: 0, count: 0 };
+
+    lancamentos.filter((l: any) => idsFiltro.has(l.pessoa_id)).forEach((l: any) => {
+      const diaSem = new Date(l.data + 'T00:00:00').getDay();
+      if (metricaSel === 'he' && l.tipo.includes('he')) {
+        contagem[diaSem].valor += +(l.minutos||0)/60;
+        contagem[diaSem].count++;
+      } else if (metricaSel === 'abs') {
+        let h = 0;
+        if (l.tipo === 'falta-injustificada' || l.tipo === 'atestado') h = horasUteisDia;
+        else if (l.tipo === 'atraso') h = +(l.minutos||0)/60;
+        else if (l.tipo === 'saida-antecipada') h = +(l.minutos||0)/60;
+        if (h > 0) { contagem[diaSem].valor += h; contagem[diaSem].count++; }
+      }
+    });
+    return contagem;
+  }, [lancamentos, idsFiltro, metricaSel, horasUteisDia]);
+
+  // ── Visão por dia do calendário ───────────────────────────────────────────────
+  const dadosPorDiaCalendario = useMemo(() => {
+    const ini = `${anoSel}-${String(mesSel+1).padStart(2,'0')}-01`;
+    const fim = `${anoSel}-${String(mesSel+1).padStart(2,'0')}-${String(new Date(anoSel,mesSel+1,0).getDate()).padStart(2,'0')}`;
+    const lancs = lancamentos.filter((l: any) => l.data >= ini && l.data <= fim && idsFiltro.has(l.pessoa_id));
+
+    const por: Record<string, number> = {};
+    lancs.forEach((l: any) => {
+      if (!por[l.data]) por[l.data] = 0;
+      if (metricaSel === 'he' && l.tipo.includes('he')) por[l.data] += +(l.minutos||0)/60;
+      else if (metricaSel === 'abs') {
+        if (l.tipo === 'falta-injustificada' || l.tipo === 'atestado') por[l.data] += horasUteisDia;
+        else if (l.tipo === 'atraso') por[l.data] += +(l.minutos||0)/60;
+        else if (l.tipo === 'saida-antecipada') por[l.data] += +(l.minutos||0)/60;
+      }
+    });
+    return por;
+  }, [lancamentos, idsFiltro, metricaSel, horasUteisDia, mesSel, anoSel]);
+
+  const maxSemana = Math.max(...Object.values(dadosPorDiaSemana).map(d => d.valor), 1);
+  const maxCalendario = Math.max(...Object.values(dadosPorDiaCalendario), 1);
+
+  const corCalor = (valor: number, max: number) => {
+    const pct = valor / max;
+    if (valor === 0) return 'bg-gray-100 text-gray-300';
+    if (pct < 0.25) return metricaSel === 'he' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700';
+    if (pct < 0.5)  return metricaSel === 'he' ? 'bg-blue-300 text-blue-800' : 'bg-red-300 text-red-800';
+    if (pct < 0.75) return metricaSel === 'he' ? 'bg-blue-500 text-white'    : 'bg-red-500 text-white';
+    return metricaSel === 'he' ? 'bg-blue-700 text-white' : 'bg-red-700 text-white';
+  };
+
+  const totalDias = new Date(anoSel, mesSel + 1, 0).getDate();
+  const primeiroDia = new Date(anoSel, mesSel, 1).getDay();
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const mudarMes = (delta: number) => {
+    let novoMes = mesSel + delta;
+    let novoAno = anoSel;
+    if (novoMes > 11) { novoMes = 0; novoAno++; }
+    if (novoMes < 0) { novoMes = 11; novoAno--; }
+    setMesSel(novoMes);
+    setAnoSel(novoAno);
+  };
+
+  return (
+    <div className="pb-20 md:pb-0 space-y-4">
+      {/* Controles */}
+      <div className="bg-white rounded-xl shadow p-4 flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setMetricaSel('abs')}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${metricaSel==='abs'?'bg-red-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            📉 Absenteísmo
+          </button>
+          <button onClick={() => setMetricaSel('he')}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${metricaSel==='he'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            💰 HE
+          </button>
+          <div className="w-px bg-gray-200"/>
+          <button onClick={() => setVisaoSel('semana')}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${visaoSel==='semana'?'bg-gray-700 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            📆 Por dia da semana
+          </button>
+          <button onClick={() => setVisaoSel('calendario')}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${visaoSel==='calendario'?'bg-gray-700 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            🗓 Por calendário
+          </button>
+        </div>
+        <select value={setorFiltro} onChange={e => setSetorFiltro(e.target.value)}
+          className="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="">Todos os setores</option>
+          {['Inbound','Outbound','Projetos/Estoques/Custos'].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {/* Legenda de intensidade */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500">Menos</span>
+        {[0, 0.2, 0.4, 0.7, 1].map((v, i) => (
+          <div key={i} className={`w-6 h-6 rounded ${corCalor(v, 1).split(' ')[0]}`}/>
+        ))}
+        <span className="text-xs text-gray-500">Mais</span>
+      </div>
+
+      {/* ── Visão por dia da semana ── */}
+      {visaoSel === 'semana' && (
+        <div className="bg-white rounded-xl shadow p-5">
+          <h2 className="text-lg font-bold text-gray-700 mb-1">
+            {metricaSel === 'he' ? '💰 HE por Dia da Semana' : '📉 Absenteísmo por Dia da Semana'}
+          </h2>
+          <p className="text-xs text-gray-400 mb-6">Acumulado de todo o histórico disponível</p>
+          <div className="space-y-3">
+            {diasSemana.map((dia, i) => {
+              const dado = dadosPorDiaSemana[i];
+              const pct = dado.valor > 0 ? (dado.valor / maxSemana) * 100 : 0;
+              const cor = corCalor(dado.valor, maxSemana);
+              const corBarra = metricaSel === 'he' ? 'bg-blue-500' : 'bg-red-500';
+              return (
+                <div key={dia} className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-gray-600 w-8">{dia}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-8 overflow-hidden">
+                    <div className={`h-8 rounded-full flex items-center px-3 transition-all duration-700 ${dado.valor > 0 ? corBarra : ''}`}
+                      style={{ width: `${Math.max(pct, dado.valor > 0 ? 5 : 0)}%` }}>
+                      {dado.valor > 0 && (
+                        <span className="text-white text-xs font-bold whitespace-nowrap">
+                          {dado.valor.toFixed(1)}h
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-400 w-20 text-right">
+                    {dado.count > 0 ? `${dado.count} ocorr.` : 'sem dados'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Insight automático */}
+          {(() => {
+            const top = Object.entries(dadosPorDiaSemana)
+              .filter(([,d]) => d.valor > 0)
+              .sort(([,a],[,b]) => b.valor - a.valor)[0];
+            if (!top) return null;
+            return (
+              <div className={`mt-4 p-3 rounded-lg border-l-4 text-sm font-semibold
+                ${metricaSel==='he'?'bg-blue-50 border-blue-500 text-blue-800':'bg-red-50 border-red-500 text-red-800'}`}>
+                💡 {diasSemana[+top[0]]} concentra mais {metricaSel === 'he' ? 'horas extras' : 'absenteísmo'}: {top[1].valor.toFixed(1)}h no total
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── Visão por calendário ── */}
+      {visaoSel === 'calendario' && (
+        <div className="bg-white rounded-xl shadow p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <button onClick={() => mudarMes(-1)}
+              className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center">‹</button>
+            <h2 className="text-base font-bold text-gray-700 min-w-[160px] text-center">
+              {metricaSel === 'he' ? '💰 HE — ' : '📉 Abs — '}{nomeMes[mesSel]} {anoSel}
+            </h2>
+            <button onClick={() => mudarMes(1)}
+              className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center">›</button>
+          </div>
+
+          <div className="grid grid-cols-7 mb-1">
+            {diasSemana.map(d => (
+              <div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: primeiroDia }).map((_, i) => <div key={`v${i}`}/>)}
+            {Array.from({ length: totalDias }).map((_, i) => {
+              const dia = i + 1;
+              const data = `${anoSel}-${pad(mesSel+1)}-${pad(dia)}`;
+              const valor = dadosPorDiaCalendario[data] || 0;
+              const cor = corCalor(valor, maxCalendario);
+              const diaSem = new Date(data+'T00:00:00').getDay();
+              const fimSemana = diaSem === 0 || diaSem === 6;
+              return (
+                <div key={dia}
+                  className={`rounded-lg p-1.5 min-h-[52px] flex flex-col items-center justify-center
+                    ${fimSemana ? 'bg-gray-50 opacity-50' : cor}`}
+                  title={valor > 0 ? `${dia}/${mesSel+1}: ${valor.toFixed(1)}h` : ''}>
+                  <span className={`text-xs font-bold ${fimSemana?'text-gray-300':valor>0?'':'text-gray-400'}`}>{dia}</span>
+                  {valor > 0 && !fimSemana && (
+                    <span className="text-xs font-bold mt-0.5">{valor.toFixed(1)}h</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Insight do mês */}
+          {(() => {
+            const top = Object.entries(dadosPorDiaCalendario).sort(([,a],[,b])=>b-a)[0];
+            if (!top || top[1] === 0) return null;
+            const dt = new Date(top[0]+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+            return (
+              <div className={`mt-4 p-3 rounded-lg border-l-4 text-sm font-semibold
+                ${metricaSel==='he'?'bg-blue-50 border-blue-500 text-blue-800':'bg-red-50 border-red-500 text-red-800'}`}>
+                💡 Pico em {dt}: {top[1].toFixed(1)}h de {metricaSel === 'he' ? 'horas extras' : 'absenteísmo'}
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
