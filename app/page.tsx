@@ -1038,7 +1038,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         <div className="hidden md:flex gap-1 mb-6 border-b-2 border-gray-200 overflow-x-auto">
           {[
             ['resumos','📊 Resumos'],['dashboard','📈 Dashboard'],['lancamentos','📝 Lançamentos'],
-            ['ferias','🏖️ Férias'],['bonus','🎁 Bônus'],['auditoria','🔍 Auditoria'],['configuracao','⚙️ Config']
+            ['ferias','🏖️ Férias'],['bonus','🎁 Bônus'],['cha','🧠 Matriz CHA'],['auditoria','🔍 Auditoria'],['configuracao','⚙️ Config']
           ].map(([id, label]) => (
             <button key={id} onClick={() => setAbaAtiva(id)}
               className={`px-5 py-3 font-bold whitespace-nowrap transition text-sm
@@ -1051,7 +1051,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         {/* Menu mobile fixo */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 flex justify-around py-2 shadow-lg">
           {[
-            ['resumos','📊'],['lancamentos','📝'],['ferias','🏖️'],['bonus','🎁'],['configuracao','⚙️']
+            ['resumos','📊'],['lancamentos','📝'],['ferias','🏖️'],['bonus','🎁'],['cha','🧠'],['configuracao','⚙️']
           ].map(([id, icon]) => (
             <button key={id} onClick={() => setAbaAtiva(id)}
               className={`flex flex-col items-center text-xs px-2 py-1 rounded-lg
@@ -1611,6 +1611,16 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         )}
 
         {/* ══ ABA: AUDITORIA ══ */}
+
+        {/* ══ ABA: MATRIZ CHA ══ */}
+        {abaAtiva === 'cha' && (
+          <MatrizCHA
+            pessoas={pessoasAtivas}
+            mostrarToast={mostrarToast}
+            Avatar={Avatar}
+          />
+        )}
+
         {abaAtiva === 'auditoria' && (
           <div className="pb-20 md:pb-0">
             <div className="bg-white rounded-xl shadow p-5">
@@ -1946,6 +1956,618 @@ function ConfiguracaoTab({
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: MatrizCHA
+// ══════════════════════════════════════════════════════════════════════════════
+function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
+  const SENHAS_AVALIACAO = ['INBOUND', 'OUTBOUND', 'PROJETOS'];
+  const supabaseCHA = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  // ── Estados ──────────────────────────────────────────────────────────────────
+  const [subAba, setSubAba] = useState<'avaliar'|'habilidades'|'resultados'|'feedback'>('resultados');
+  const [habilidades, setHabilidades] = useState<any[]>([]);
+  const [avaliacoes, setAvaliacoes] = useState<any[]>([]);
+  const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const [carregando, setCarregando] = useState(true);
+
+  // Formulário habilidade
+  const [formHab, setFormHab] = useState({ cargo: '', nome: '' });
+
+  // Formulário avaliação
+  const [senhaAvaliacao, setSenhaAvaliacao] = useState('');
+  const [senhaOk, setSenhaOk] = useState(false);
+  const [errSenha, setErrSenha] = useState('');
+  const [pessoaSelecionada, setPessoaSelecionada] = useState<number>(0);
+  const [dataAvaliacao, setDataAvaliacao] = useState('');
+  const [notas, setNotas] = useState<Record<number,{c:string;h:string;a:string}>>({});
+
+  // Formulário feedback
+  const [feedbackPessoa, setFeedbackPessoa] = useState<number>(0);
+  const [feedbackData, setFeedbackData] = useState('');
+  const [feedbackTexto, setFeedbackTexto] = useState('');
+
+  // Resultados
+  const [pessoaResultado, setPessoaResultado] = useState<number>(0);
+
+  // ── Cargos disponíveis ────────────────────────────────────────────────────────
+  const cargosUnicos = [...new Set(pessoas.map((p: any) => p.cargo))].sort() as string[];
+
+  // ── Carregar dados ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const carregar = async () => {
+      setCarregando(true);
+      try {
+        const [{ data: habs }, { data: avs }, { data: fbs }] = await Promise.all([
+          supabaseCHA.from('habilidades').select('*').eq('ativo', true).order('cargo').order('nome'),
+          supabaseCHA.from('avaliacao_cha').select('*').order('data_avaliacao', { ascending: false }),
+          supabaseCHA.from('feedback_cha').select('*').order('data_feedback', { ascending: false }),
+        ]);
+        if (habs) setHabilidades(habs);
+        if (avs) setAvaliacoes(avs);
+        if (fbs) setFeedbacks(fbs);
+      } catch (err) { console.error(err); }
+      setCarregando(false);
+    };
+    carregar();
+  }, []);
+
+  // Inicializar pessoaSelecionada e feedbackPessoa
+  useEffect(() => {
+    if (pessoas.length > 0) {
+      if (!pessoaSelecionada) setPessoaSelecionada(pessoas[0].id);
+      if (!feedbackPessoa) setFeedbackPessoa(pessoas[0].id);
+      if (!pessoaResultado) setPessoaResultado(pessoas[0].id);
+    }
+  }, [pessoas]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  const habsDaPessoa = (pessoaId: number) => {
+    const pessoa = pessoas.find((p: any) => p.id === pessoaId);
+    return habilidades.filter(h => h.cargo === pessoa?.cargo);
+  };
+
+  const calcularResultado = (pessoaId: number) => {
+    const habs = habsDaPessoa(pessoaId);
+    if (habs.length === 0) return null;
+    const avsRecentes: Record<number, any> = {};
+    avaliacoes
+      .filter(a => a.pessoa_id === pessoaId)
+      .forEach(a => {
+        if (!avsRecentes[a.habilidade_id]) avsRecentes[a.habilidade_id] = a;
+      });
+    const habsComNota = habs.filter(h => avsRecentes[h.id]);
+    if (habsComNota.length === 0) return null;
+    let totalPontos = 0;
+    let maxPontos = 0;
+    habsComNota.forEach(h => {
+      const av = avsRecentes[h.id];
+      totalPontos += (+(av.nota_c||0) + +(av.nota_h||0) + +(av.nota_a||0));
+      maxPontos += 9; // máx 3 por C, H, A
+    });
+    const pct = maxPontos > 0 ? (totalPontos / maxPontos) * 100 : 0;
+    return { pct: +pct.toFixed(1), habsComNota, avsRecentes, habs };
+  };
+
+  const getLegendaResultado = (pct: number) => {
+    if (pct >= 90) return { label: 'Excede expectativas', cor: 'bg-green-700 text-white' };
+    if (pct >= 70) return { label: 'Atende expectativas', cor: 'bg-green-500 text-white' };
+    if (pct >= 50) return { label: 'Atende parcialmente', cor: 'bg-yellow-400 text-gray-900' };
+    return { label: 'Não atende expectativas', cor: 'bg-red-600 text-white' };
+  };
+
+  const getTendencia = (pessoaId: number, habId: number) => {
+    const hist = avaliacoes
+      .filter(a => a.pessoa_id === pessoaId && a.habilidade_id === habId)
+      .slice(0, 3);
+    if (hist.length < 2) return null;
+    const medias = hist.map(a => ((+(a.nota_c||0) + +(a.nota_h||0) + +(a.nota_a||0)) / 9 * 100).toFixed(0));
+    const diff = +medias[0] - +medias[1];
+    if (diff > 5) return '📈 Melhora';
+    if (diff < -5) return '📉 Queda';
+    return '➡️ Estável';
+  };
+
+  // ── Handlers ──────────────────────────────────────────────────────────────────
+  const handleVerificarSenha = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (SENHAS_AVALIACAO.includes(senhaAvaliacao.toUpperCase())) {
+      setSenhaOk(true);
+      setErrSenha('');
+    } else {
+      setErrSenha('❌ Senha incorreta!');
+    }
+  };
+
+  const handleAdicionarHabilidade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formHab.cargo || !formHab.nome.trim()) { mostrarToast('Preencha todos os campos!', 'err'); return; }
+    try {
+      const { data, error } = await supabaseCHA.from('habilidades').insert([{
+        cargo: formHab.cargo, nome: formHab.nome.trim(), ativo: true
+      }]).select().single();
+      if (error) throw error;
+      setHabilidades(h => [...h, data].sort((a,b) => a.nome.localeCompare(b.nome)));
+      setFormHab(f => ({ ...f, nome: '' }));
+      mostrarToast('✅ Habilidade adicionada!');
+    } catch (err: any) { mostrarToast('❌ Erro: ' + err.message, 'err'); }
+  };
+
+  const handleRemoverHabilidade = async (id: number) => {
+    if (!confirm('Remover habilidade? O histórico de notas será preservado.')) return;
+    try {
+      await supabaseCHA.from('habilidades').update({ ativo: false }).eq('id', id);
+      setHabilidades(h => h.filter(x => x.id !== id));
+      mostrarToast('✅ Habilidade removida!');
+    } catch (err: any) { mostrarToast('❌ Erro: ' + err.message, 'err'); }
+  };
+
+  const handleSalvarAvaliacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pessoaSelecionada || !dataAvaliacao) { mostrarToast('Selecione colaborador e data!', 'err'); return; }
+    const habs = habsDaPessoa(pessoaSelecionada);
+    if (habs.length === 0) { mostrarToast('Sem habilidades cadastradas para este cargo!', 'err'); return; }
+    const faltando = habs.filter(h => !notas[h.id]?.c || !notas[h.id]?.h || !notas[h.id]?.a);
+    if (faltando.length > 0) { mostrarToast(`Preencha todas as notas (C, H, A) para cada habilidade!`, 'err'); return; }
+    try {
+      const registros = habs.map(h => ({
+        pessoa_id: pessoaSelecionada,
+        habilidade_id: h.id,
+        data_avaliacao: dataAvaliacao,
+        nota_c: +notas[h.id].c,
+        nota_h: +notas[h.id].h,
+        nota_a: +notas[h.id].a,
+        avaliador: senhaAvaliacao.toUpperCase(),
+      }));
+      const { data, error } = await supabaseCHA.from('avaliacao_cha').insert(registros).select();
+      if (error) throw error;
+      setAvaliacoes(a => [...(data||[]), ...a]);
+      setNotas({});
+      setDataAvaliacao('');
+      mostrarToast('✅ Avaliação salva!');
+    } catch (err: any) { mostrarToast('❌ Erro: ' + err.message, 'err'); }
+  };
+
+  const handleSalvarFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackPessoa || !feedbackData || !feedbackTexto.trim()) {
+      mostrarToast('Preencha todos os campos!', 'err'); return;
+    }
+    try {
+      const { data, error } = await supabaseCHA.from('feedback_cha').insert([{
+        pessoa_id: feedbackPessoa,
+        data_feedback: feedbackData,
+        conteudo: feedbackTexto.trim(),
+        aplicador: 'Gestor',
+      }]).select().single();
+      if (error) throw error;
+      setFeedbacks(f => [data, ...f]);
+      setFeedbackTexto('');
+      setFeedbackData('');
+      mostrarToast('✅ Feedback registrado!');
+    } catch (err: any) { mostrarToast('❌ Erro: ' + err.message, 'err'); }
+  };
+
+  // ── Exportar Excel (CSV compatível) ──────────────────────────────────────────
+  const exportarExcel = () => {
+    const linhas: string[] = [];
+    linhas.push('Colaborador;Cargo;Habilidade;Data;Nota C;Nota H;Nota A;Média %;Resultado');
+    pessoas.forEach((p: any) => {
+      const habs = habilidades.filter(h => h.cargo === p.cargo);
+      habs.forEach(h => {
+        const avsHab = avaliacoes.filter(a => a.pessoa_id === p.id && a.habilidade_id === h.id);
+        avsHab.forEach(av => {
+          const media = (((+(av.nota_c||0)) + (+(av.nota_h||0)) + (+(av.nota_a||0))) / 9 * 100).toFixed(1);
+          const leg = getLegendaResultado(+media);
+          linhas.push(`${p.nome};${p.cargo};${h.nome};${av.data_avaliacao};${av.nota_c};${av.nota_h};${av.nota_a};${media}%;${leg.label}`);
+        });
+      });
+    });
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `MatrizCHA_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    mostrarToast('✅ Arquivo exportado! Abra com Excel.');
+  };
+
+  if (carregando) return (
+    <div className="flex items-center justify-center py-20">
+      <p className="text-blue-600 font-bold text-lg">⏳ Carregando Matriz CHA...</p>
+    </div>
+  );
+
+  return (
+    <div className="pb-20 md:pb-0 space-y-4">
+      {/* Sub-abas */}
+      <div className="bg-white rounded-xl shadow p-2 flex gap-1 overflow-x-auto">
+        {[
+          ['resultados','📊 Resultados'],
+          ['avaliar','✏️ Avaliar'],
+          ['habilidades','🎯 Habilidades'],
+          ['feedback','💬 Feedback'],
+        ].map(([id, label]) => (
+          <button key={id} onClick={() => setSubAba(id as any)}
+            className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition
+              ${subAba === id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            {label}
+          </button>
+        ))}
+        <button onClick={exportarExcel}
+          className="ml-auto px-4 py-2 rounded-lg font-bold text-sm bg-green-600 text-white whitespace-nowrap">
+          📥 Exportar Excel
+        </button>
+      </div>
+
+      {/* Legenda de notas — sempre visível */}
+      <div className="bg-blue-50 rounded-xl p-4 text-sm">
+        <p className="font-bold text-blue-800 mb-2">📖 Legenda de Notas:</p>
+        <div className="flex flex-wrap gap-4 text-blue-700">
+          <span><strong>Nota 1</strong> — Não possui conhecimento</span>
+          <span><strong>Nota 2</strong> — Adquiriu o conhecimento</span>
+          <span><strong>Nota 3</strong> — Autonomia perfeita, pode ensinar</span>
+        </div>
+        <div className="flex flex-wrap gap-3 mt-2">
+          <span className="bg-green-700 text-white px-2 py-0.5 rounded text-xs font-bold">≥90% Excede expectativas</span>
+          <span className="bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">70-89% Atende expectativas</span>
+          <span className="bg-yellow-400 text-gray-900 px-2 py-0.5 rounded text-xs font-bold">50-69% Atende parcialmente</span>
+          <span className="bg-red-600 text-white px-2 py-0.5 rounded text-xs font-bold">&lt;50% Não atende</span>
+        </div>
+      </div>
+
+      {/* ── SUB-ABA: RESULTADOS ── */}
+      {subAba === 'resultados' && (
+        <div className="space-y-4">
+          {/* Seletor de colaborador */}
+          <div className="bg-white rounded-xl shadow p-5">
+            <h2 className="text-lg font-bold text-gray-700 mb-3">📊 Resultado Individual</h2>
+            <select value={pessoaResultado} onChange={e => setPessoaResultado(+e.target.value)}
+              className="w-full md:w-72 border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              {pessoas.map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.setor})</option>)}
+            </select>
+          </div>
+
+          {pessoaResultado > 0 && (() => {
+            const resultado = calcularResultado(pessoaResultado);
+            const pessoa = pessoas.find((p: any) => p.id === pessoaResultado);
+            const fbs = feedbacks.filter(f => f.pessoa_id === pessoaResultado);
+            if (!resultado) return (
+              <div className="bg-white rounded-xl shadow p-6 text-center text-gray-400">
+                <p className="text-4xl mb-2">📋</p>
+                <p>Sem avaliações registradas para {pessoa?.nome}</p>
+              </div>
+            );
+            const legend = getLegendaResultado(resultado.pct);
+            return (
+              <div className="space-y-4">
+                {/* Card resultado geral */}
+                <div className="bg-white rounded-xl shadow p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Avatar pessoa={pessoa} tamanho="md"/>
+                    <div>
+                      <p className="font-bold text-gray-800">{pessoa?.nome}</p>
+                      <p className="text-xs text-gray-500">{pessoa?.cargo} • {pessoa?.setor}</p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className="text-3xl font-bold text-blue-600">{resultado.pct}%</p>
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${legend.cor}`}>{legend.label}</span>
+                    </div>
+                  </div>
+                  {/* Barra de progresso */}
+                  <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                    <div className={`h-3 rounded-full transition-all ${resultado.pct>=90?'bg-green-700':resultado.pct>=70?'bg-green-500':resultado.pct>=50?'bg-yellow-400':'bg-red-600'}`}
+                      style={{ width: `${resultado.pct}%` }}/>
+                  </div>
+
+                  {/* Por habilidade */}
+                  <h3 className="font-bold text-gray-700 mb-3 text-sm">Por habilidade:</h3>
+                  <div className="space-y-2">
+                    {resultado.habs.map((h: any) => {
+                      const av = resultado.avsRecentes[h.id];
+                      if (!av) return (
+                        <div key={h.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
+                          <span className="text-gray-500">{h.nome}</span>
+                          <span className="text-gray-400 text-xs">Sem avaliação</span>
+                        </div>
+                      );
+                      const pctHab = (((+(av.nota_c||0))+(+(av.nota_h||0))+(+(av.nota_a||0)))/9*100).toFixed(0);
+                      const leg = getLegendaResultado(+pctHab);
+                      const tend = getTendencia(pessoaResultado, h.id);
+                      return (
+                        <div key={h.id} className="p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-semibold text-gray-700">{h.nome}</span>
+                            <div className="flex items-center gap-2">
+                              {tend && <span className="text-xs text-gray-500">{tend}</span>}
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded ${leg.cor}`}>{pctHab}%</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-3 text-xs text-gray-500">
+                            <span>C: <strong>{av.nota_c}</strong></span>
+                            <span>H: <strong>{av.nota_h}</strong></span>
+                            <span>A: <strong>{av.nota_a}</strong></span>
+                            <span className="ml-auto">{new Date(av.data_avaliacao+'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Histórico de avaliações */}
+                <div className="bg-white rounded-xl shadow p-5">
+                  <h3 className="font-bold text-gray-700 mb-3">📅 Histórico de Avaliações</h3>
+                  {(() => {
+                    const datas = [...new Set(avaliacoes.filter(a=>a.pessoa_id===pessoaResultado).map(a=>a.data_avaliacao))].sort((a,b)=>b.localeCompare(a));
+                    if (datas.length === 0) return <p className="text-gray-400 text-sm">Sem histórico</p>;
+                    return (
+                      <div className="space-y-2">
+                        {datas.map(data => {
+                          const avsData = avaliacoes.filter(a=>a.pessoa_id===pessoaResultado&&a.data_avaliacao===data);
+                          const total = avsData.reduce((acc,a)=>acc+(+(a.nota_c||0))+(+(a.nota_h||0))+(+(a.nota_a||0)),0);
+                          const max = avsData.length * 9;
+                          const pct = max > 0 ? (total/max*100).toFixed(0) : '0';
+                          const leg = getLegendaResultado(+pct);
+                          return (
+                            <div key={data} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
+                              <span className="text-gray-600">{new Date(data+'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded ${leg.cor}`}>{pct}% — {leg.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Feedbacks */}
+                {fbs.length > 0 && (
+                  <div className="bg-white rounded-xl shadow p-5">
+                    <h3 className="font-bold text-gray-700 mb-3">💬 Feedbacks</h3>
+                    <div className="space-y-2">
+                      {fbs.map(f => (
+                        <div key={f.id} className="p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+                          <p className="text-xs text-gray-400 mb-1">{new Date(f.data_feedback+'T00:00:00').toLocaleDateString('pt-BR')} • {f.aplicador}</p>
+                          <p className="text-sm text-gray-700">{f.conteudo}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Resumo por time */}
+          <div className="bg-white rounded-xl shadow p-5">
+            <h2 className="text-lg font-bold text-gray-700 mb-4">🏢 Resumo por Time</h2>
+            {['Inbound','Outbound','Projetos/Estoques/Custos'].map(setor => {
+              const pessoasSetor = pessoas.filter((p: any) => p.setor === setor);
+              const resultados = pessoasSetor.map((p: any) => calcularResultado(p.id)).filter(Boolean);
+              if (resultados.length === 0) return (
+                <div key={setor} className="p-3 bg-gray-50 rounded-lg mb-2">
+                  <p className="text-sm font-semibold text-gray-600">{setor} — sem avaliações</p>
+                </div>
+              );
+              const mediaSetor = resultados.reduce((acc: number, r: any) => acc + r.pct, 0) / resultados.length;
+              const leg = getLegendaResultado(mediaSetor);
+              return (
+                <div key={setor} className="p-3 bg-gray-50 rounded-lg mb-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-700">{setor}</p>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${leg.cor}`}>{mediaSetor.toFixed(1)}%</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">{resultados.length} de {pessoasSetor.length} avaliados</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── SUB-ABA: AVALIAR ── */}
+      {subAba === 'avaliar' && (
+        <div className="bg-white rounded-xl shadow p-5">
+          <h2 className="text-lg font-bold text-gray-700 mb-4">✏️ Registrar Avaliação</h2>
+
+          {!senhaOk ? (
+            <form onSubmit={handleVerificarSenha} className="max-w-sm space-y-3">
+              <p className="text-sm text-gray-600">Esta área é protegida. Digite a senha do seu time:</p>
+              <input type="password" value={senhaAvaliacao}
+                onChange={e => setSenhaAvaliacao(e.target.value)}
+                placeholder="INBOUND / OUTBOUND / PROJETOS"
+                className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"/>
+              {errSenha && <p className="text-red-600 text-sm">{errSenha}</p>}
+              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold text-sm">
+                🔓 Entrar
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSalvarAvaliacao} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">👤 Colaborador</label>
+                  <select value={pessoaSelecionada} onChange={e => { setPessoaSelecionada(+e.target.value); setNotas({}); }}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                    {pessoas.map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.cargo})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">📅 Data da Avaliação</label>
+                  <input type="date" value={dataAvaliacao} onChange={e => setDataAvaliacao(e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" required/>
+                </div>
+              </div>
+
+              {pessoaSelecionada > 0 && (() => {
+                const habs = habsDaPessoa(pessoaSelecionada);
+                if (habs.length === 0) return (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg text-sm text-yellow-800">
+                    ⚠️ Nenhuma habilidade cadastrada para este cargo. Vá em "Habilidades" para cadastrar.
+                  </div>
+                );
+                // Verificar se já avaliou hoje
+                const jaAvaliou = dataAvaliacao && avaliacoes.some(
+                  a => a.pessoa_id === pessoaSelecionada && a.data_avaliacao === dataAvaliacao
+                );
+                if (jaAvaliou) return (
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg text-sm text-red-800">
+                    ⚠️ Já existe uma avaliação registrada para este colaborador nesta data. As notas não podem ser alteradas após salvar.
+                  </div>
+                );
+                return (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Cargo: {pessoas.find((p:any)=>p.id===pessoaSelecionada)?.cargo}</p>
+                    {habs.map(h => (
+                      <div key={h.id} className="p-4 bg-gray-50 rounded-xl">
+                        <p className="font-semibold text-gray-700 mb-3 text-sm">{h.nome}</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          {(['c','h','a'] as const).map(dim => (
+                            <div key={dim}>
+                              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">
+                                {dim === 'c' ? 'C — Conhecimento' : dim === 'h' ? 'H — Habilidade' : 'A — Atitude'}
+                              </label>
+                              <div className="flex gap-1">
+                                {[1,2,3].map(n => (
+                                  <button key={n} type="button"
+                                    onClick={() => setNotas(prev => ({ ...prev, [h.id]: { ...prev[h.id], [dim]: String(n) } }))}
+                                    className={`flex-1 py-2 rounded-lg font-bold text-sm transition
+                                      ${notas[h.id]?.[dim] === String(n)
+                                        ? 'bg-blue-600 text-white shadow'
+                                        : 'bg-white border-2 border-gray-200 text-gray-600 hover:border-blue-400'}`}>
+                                    {n}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <button type="submit"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold">
+                      💾 Salvar Avaliação
+                    </button>
+                    <p className="text-xs text-red-500 text-center">⚠️ As notas não podem ser alteradas após salvar.</p>
+                  </div>
+                );
+              })()}
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* ── SUB-ABA: HABILIDADES ── */}
+      {subAba === 'habilidades' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow p-5">
+            <h2 className="text-lg font-bold text-gray-700 mb-4">🎯 Cadastrar Habilidade por Cargo</h2>
+            <form onSubmit={handleAdicionarHabilidade} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <select value={formHab.cargo} onChange={e => setFormHab(f => ({ ...f, cargo: e.target.value }))}
+                className="border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                <option value="">Selecione o cargo...</option>
+                {cargosUnicos.map((c: string) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input type="text" placeholder="Nome da habilidade/serviço" value={formHab.nome}
+                onChange={e => setFormHab(f => ({ ...f, nome: e.target.value }))}
+                className="border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" required/>
+              <button type="submit" className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2 font-bold text-sm">
+                ➕ Adicionar
+              </button>
+            </form>
+          </div>
+
+          {cargosUnicos.map((cargo: string) => {
+            const habsCargo = habilidades.filter(h => h.cargo === cargo);
+            if (habsCargo.length === 0) return null;
+            return (
+              <div key={cargo} className="bg-white rounded-xl shadow p-5">
+                <h3 className="font-bold text-gray-700 mb-3 text-sm">{cargo}</h3>
+                <div className="space-y-2">
+                  {habsCargo.map(h => (
+                    <div key={h.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                      <span className="text-sm text-gray-700">{h.nome}</span>
+                      <button onClick={() => handleRemoverHabilidade(h.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── SUB-ABA: FEEDBACK ── */}
+      {subAba === 'feedback' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow p-5">
+            <h2 className="text-lg font-bold text-gray-700 mb-4">💬 Registrar Feedback</h2>
+            <form onSubmit={handleSalvarFeedback} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">👤 Colaborador</label>
+                  <select value={feedbackPessoa} onChange={e => setFeedbackPessoa(+e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                    {pessoas.map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.setor})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">📅 Data de Aplicação</label>
+                  <input type="date" value={feedbackData} onChange={e => setFeedbackData(e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" required/>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">💬 Conteúdo do Feedback</label>
+                <textarea value={feedbackTexto} onChange={e => setFeedbackTexto(e.target.value)}
+                  rows={4} placeholder="Descreva o feedback..."
+                  className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none" required/>
+              </div>
+              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm">
+                💾 Salvar Feedback
+              </button>
+            </form>
+          </div>
+
+          {/* Histórico feedbacks */}
+          <div className="bg-white rounded-xl shadow p-5">
+            <h2 className="text-lg font-bold text-gray-700 mb-4">📋 Histórico de Feedbacks</h2>
+            {feedbacks.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-6">Sem feedbacks registrados</p>
+            ) : (
+              <div className="space-y-3">
+                {feedbacks.map(f => {
+                  const p = pessoas.find((x: any) => x.id === f.pessoa_id);
+                  return (
+                    <div key={f.id} className="p-4 bg-yellow-50 rounded-xl border-l-4 border-yellow-400">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Avatar pessoa={p} tamanho="sm"/>
+                        <div>
+                          <p className="text-sm font-bold text-gray-700">{p?.nome}</p>
+                          <p className="text-xs text-gray-400">
+                            {new Date(f.data_feedback+'T00:00:00').toLocaleDateString('pt-BR')} • {f.aplicador}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700">{f.conteudo}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
