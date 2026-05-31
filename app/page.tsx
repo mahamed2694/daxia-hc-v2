@@ -140,6 +140,9 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const [setorFiltro, setSetorFiltro] = useState('');
   const [toast, setToast] = useState<{ msg: string; tipo: 'ok' | 'err' } | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [guiaAberto, setGuiaAberto] = useState(false);
+  const [guiaPasso, setGuiaPasso] = useState(0);
+  const [guiaAba, setGuiaAba] = useState<string|null>(null); // null = guia completo
 
   const [tabelaHE, setTabelaHE] = useState(cargosIniciais);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
@@ -206,6 +209,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         if (feriadosData) setFeriados(feriadosData);
 
         setHidratado(true);
+        // Mostrar guia na primeira vez
+        if (!localStorage.getItem("daxia_guia_visto")) {
+          setGuiaAberto(true);
+          setGuiaAba(null);
+        }
       } catch (err) {
         console.error('Erro ao carregar:', err);
         setHidratado(true);
@@ -439,24 +447,28 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   // ── Insights Inteligentes ────────────────────────────────────────────────────
   const insights = useMemo(() => {
     const lista: { msg: string; cor: 'vermelho'|'verde'|'neutro' }[] = [];
+    const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    const feriadosSet = new Set(feriados.map((f: any) => f.data));
 
-    // Pico de HE com data
+    // 1. Pico de HE com data exata
     if (dadosGraficoHE.length > 0) {
       const pico = dadosGraficoHE.reduce((a,b)=>b.valor>a.valor?b:a);
       if (pico.valor > 0) lista.push({ msg: `📈 Pico de HE em ${pico.data}: R$ ${pico.valor.toFixed(2)}`, cor: 'neutro' });
     }
 
-    // HE acima da meta
-    if (totalHE > metaHE * 0.8)
-      lista.push({ msg: `⚠️ Custo HE (R$ ${totalHE.toFixed(0)}) está em ${((totalHE/metaHE)*100).toFixed(0)}% da meta`, cor: 'vermelho' });
+    // 2. HE chegando na meta (80%) ou acima
+    if (totalHE > metaHE)
+      lista.push({ msg: `🚨 Custo HE R$ ${totalHE.toFixed(0)} ultrapassou a meta de R$ ${metaHE}!`, cor: 'vermelho' });
+    else if (totalHE > metaHE * 0.8)
+      lista.push({ msg: `⚠️ HE em ${((totalHE/metaHE)*100).toFixed(0)}% da meta — atenção ao fechamento!`, cor: 'vermelho' });
 
-    // Absenteísmo acima da meta
+    // 3. Absenteísmo vs meta
     if (+abs.taxa > metaAbsenteismo)
-      lista.push({ msg: `⚠️ Absenteísmo ${abs.taxa}% está acima da meta de ${metaAbsenteismo}%`, cor: 'vermelho' });
+      lista.push({ msg: `⚠️ Absenteísmo ${abs.taxa}% acima da meta de ${metaAbsenteismo}%`, cor: 'vermelho' });
     else if (+abs.taxa < metaAbsenteismo * 0.5)
       lista.push({ msg: `✅ Absenteísmo ${abs.taxa}% muito abaixo da meta — ótimo desempenho!`, cor: 'verde' });
 
-    // HE > 3h num único dia por colaborador (ilegal)
+    // 4. HE > 3h num único dia (ilegal)
     const hePorDiaPessoa: Record<string, number> = {};
     lancamentosFiltrados.filter(l=>l.tipo.includes('he')).forEach(l => {
       const chave = `${l.pessoa_id}_${l.data}`;
@@ -465,13 +477,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     const excedeuLegal = Object.entries(hePorDiaPessoa).find(([,mins])=>mins>180);
     if (excedeuLegal) {
       const [pid, dt] = excedeuLegal[0].split('_');
-      const nome = getNomePessoa(+pid);
-      lista.push({ msg: `🚨 ${nome} fez mais de 3h extra em ${new Date(dt+'T00:00:00').toLocaleDateString('pt-BR')} — vedado por lei!`, cor: 'vermelho' });
+      lista.push({ msg: `🚨 ${getNomePessoa(+pid)} fez +3h extra em ${new Date(dt+'T00:00:00').toLocaleDateString('pt-BR')} — vedado por lei!`, cor: 'vermelho' });
     }
 
-    // HE em domingo ou feriado
+    // 5. HE em domingo ou feriado
     const datasHE = [...new Set(lancamentosFiltrados.filter(l=>l.tipo.includes('he')).map(l=>l.data))];
-    const feriadosSet = new Set(feriados.map(f=>f.data));
     const datasHeEmFeriado = datasHE.filter(d => {
       const diaSem = new Date(d+'T00:00:00').getDay();
       return diaSem === 0 || feriadosSet.has(d);
@@ -480,16 +490,18 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       const totalMinsNessesDias = lancamentosFiltrados
         .filter(l => l.tipo.includes('he') && datasHeEmFeriado.includes(l.data))
         .reduce((acc, l) => acc + +(l.minutos||0), 0);
-      const horas = (totalMinsNessesDias/60).toFixed(1);
-      const datas = datasHeEmFeriado.map(d => new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})).join(', ');
-      lista.push({ msg: `🔴 ${horas}h de HE realizadas em domingo/feriado (${datas}) — são HE 100%!`, cor: 'vermelho' });
+      if (totalMinsNessesDias > 0) {
+        const horas = (totalMinsNessesDias/60).toFixed(1);
+        const datas = datasHeEmFeriado.map(d => new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})).join(', ');
+        lista.push({ msg: `🔴 ${horas}h de HE em domingo/feriado (${datas}) — são HE 100%!`, cor: 'vermelho' });
+      }
     }
 
-    // Por setor: absenteísmo
+    // 6. Time com maior absenteísmo
     const absPorSetor: Record<string, number> = {};
     let totalAbsH = 0;
     lancamentosFiltrados.forEach(l => {
-      const p = pessoas.find(x=>x.id===l.pessoa_id);
+      const p = pessoas.find((x: any)=>x.id===l.pessoa_id);
       const setor = p?.setor || 'Desconhecido';
       if (!absPorSetor[setor]) absPorSetor[setor] = 0;
       let h = 0;
@@ -506,11 +518,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       }
     }
 
-    // Conflito de férias no mesmo time
+    // 7. Conflito de férias no mesmo time
     const feriasMes = lancamentos.filter(l=>l.tipo==='férias' && l.data>=dataInicio && l.data<=dataFim);
     const feriasPorSetor: Record<string,number> = {};
     feriasMes.forEach(l => {
-      const p = pessoas.find(x=>x.id===l.pessoa_id);
+      const p = pessoas.find((x: any)=>x.id===l.pessoa_id);
       const setor = p?.setor||'';
       feriasPorSetor[setor] = (feriasPorSetor[setor]||0)+1;
     });
@@ -519,12 +531,116 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         lista.push({ msg: `⚠️ ${qtd} colaboradores do time ${setor} em férias no mesmo período — risco operacional!`, cor: 'vermelho' });
     });
 
-    // Sem HE
+    // 8. Sem HE
     if (totalHE === 0)
       lista.push({ msg: `✅ Sem horas extras registradas no período selecionado`, cor: 'verde' });
 
+    // 9. Sem absenteísmo
+    if (+abs.taxa === 0 && lancamentosFiltrados.length > 0)
+      lista.push({ msg: `✅ Sem absenteísmo no período — time 100% presente!`, cor: 'verde' });
+
+    // 10. Colaborador com maior HE
+    const hePorPessoa: Record<number, number> = {};
+    lancamentosFiltrados.filter(l=>l.tipo.includes('he')).forEach(l => {
+      hePorPessoa[l.pessoa_id] = (hePorPessoa[l.pessoa_id]||0) + +(l.minutos||0);
+    });
+    const topHEEntry = Object.entries(hePorPessoa).sort(([,a],[,b])=>b-a)[0];
+    if (topHEEntry && +topHEEntry[1] > 0) {
+      const horas = (+topHEEntry[1]/60).toFixed(1);
+      lista.push({ msg: `👤 ${getNomePessoa(+topHEEntry[0])} é quem mais fez HE no período: ${horas}h`, cor: 'neutro' });
+    }
+
+    // 11a. Dia da semana com mais absenteísmo
+    const absPorDiaSem: Record<number, number> = {};
+    lancamentosFiltrados.forEach(l => {
+      const diaSem = new Date(l.data+'T00:00:00').getDay();
+      let h = 0;
+      if (l.tipo==='falta-injustificada'||l.tipo==='atestado') h = horasUteisDia;
+      else if (l.tipo==='atraso') h = +(l.minutos||0)/60;
+      if (h > 0) absPorDiaSem[diaSem] = (absPorDiaSem[diaSem]||0) + h;
+    });
+    const topAbsDia = Object.entries(absPorDiaSem).sort(([,a],[,b])=>b-a)[0];
+    if (topAbsDia && +topAbsDia[1] > 0) {
+      lista.push({ msg: `📅 ${diasSemana[+topAbsDia[0]]} é o dia com mais absenteísmo no período (${(+topAbsDia[1]).toFixed(1)}h)`, cor: 'neutro' });
+    }
+
+    // 11b. Dia da semana com mais HE
+    const hePorDiaSem: Record<number, number> = {};
+    lancamentosFiltrados.filter(l=>l.tipo.includes('he')).forEach(l => {
+      const diaSem = new Date(l.data+'T00:00:00').getDay();
+      hePorDiaSem[diaSem] = (hePorDiaSem[diaSem]||0) + +(l.minutos||0);
+    });
+    const topHEDia = Object.entries(hePorDiaSem).sort(([,a],[,b])=>b-a)[0];
+    if (topHEDia && +topHEDia[1] > 0) {
+      lista.push({ msg: `📅 ${diasSemana[+topHEDia[0]]} é o dia com mais HE no período (${(+topHEDia[1]/60).toFixed(1)}h)`, cor: 'neutro' });
+    }
+
+    // 12. Proporção de HE por semana (variação última semana vs anterior)
+    const semanas: Record<number, number> = {};
+    lancamentosFiltrados.filter(l=>l.tipo.includes('he')).forEach(l => {
+      const d = new Date(l.data+'T00:00:00');
+      const inicio = new Date(dataInicio+'T00:00:00');
+      const diffDias = Math.floor((d.getTime()-inicio.getTime())/(1000*60*60*24));
+      const semana = Math.floor(diffDias/7);
+      semanas[semana] = (semanas[semana]||0) + +(l.minutos||0);
+    });
+    const semanasOrdenadas = Object.entries(semanas).sort(([a],[b])=>+a-+b);
+    if (semanasOrdenadas.length >= 2) {
+      const ultima = +semanasOrdenadas[semanasOrdenadas.length-1][1];
+      const penultima = +semanasOrdenadas[semanasOrdenadas.length-2][1];
+      if (penultima > 0) {
+        const variacao = ((ultima-penultima)/penultima*100).toFixed(0);
+        const sinal = +variacao > 0 ? `aumento de ${variacao}%` : `redução de ${Math.abs(+variacao)}%`;
+        const cor = +variacao > 20 ? 'vermelho' : +variacao < -10 ? 'verde' : 'neutro';
+        lista.push({ msg: `📊 Última semana teve ${sinal} de HE em relação à semana anterior`, cor });
+      }
+    }
+
+    // 13a. HE no pré e pós feriado
+    let hePrePos = 0;
+    let datasPrePos: string[] = [];
+    feriados.forEach((f: any) => {
+      const dFeriado = new Date(f.data+'T00:00:00');
+      [-1, 1].forEach(offset => {
+        const d = new Date(dFeriado);
+        d.setDate(d.getDate() + offset);
+        const dataStr = d.toISOString().split('T')[0];
+        if (dataStr >= dataInicio && dataStr <= dataFim) {
+          const mins = lancamentosFiltrados
+            .filter(l => l.tipo.includes('he') && l.data === dataStr)
+            .reduce((acc,l) => acc + +(l.minutos||0), 0);
+          if (mins > 0) { hePrePos += mins; datasPrePos.push(dataStr); }
+        }
+      });
+    });
+    if (hePrePos > 0) {
+      lista.push({ msg: `🗓️ ${(hePrePos/60).toFixed(1)}h de HE registradas em dias próximos a feriados — atenção ao planejamento!`, cor: 'vermelho' });
+    }
+
+    // 13b. Absenteísmo no pré e pós feriado
+    let absPrePos = 0;
+    feriados.forEach((f: any) => {
+      const dFeriado = new Date(f.data+'T00:00:00');
+      [-1, 1].forEach(offset => {
+        const d = new Date(dFeriado);
+        d.setDate(d.getDate() + offset);
+        const dataStr = d.toISOString().split('T')[0];
+        if (dataStr >= dataInicio && dataStr <= dataFim) {
+          lancamentosFiltrados.forEach(l => {
+            if (l.data === dataStr) {
+              if (l.tipo==='falta-injustificada'||l.tipo==='atestado') absPrePos += horasUteisDia;
+              else if (l.tipo==='atraso') absPrePos += +(l.minutos||0)/60;
+            }
+          });
+        }
+      });
+    });
+    if (absPrePos > 0) {
+      lista.push({ msg: `🗓️ ${absPrePos.toFixed(1)}h de absenteísmo em dias próximos a feriados — padrão de emenda detectado!`, cor: 'vermelho' });
+    }
+
     return lista;
-  }, [dadosGraficoHE, totalHE, abs, metaHE, metaAbsenteismo, lancamentosFiltrados, pessoas, feriados, horasUteisDia, dataInicio, dataFim]);
+  }, [dadosGraficoHE, totalHE, abs, metaHE, metaAbsenteismo, lancamentosFiltrados, pessoas, feriados, horasUteisDia, dataInicio, dataFim, lancamentos]);
 
   // ── Bônus com proporcional férias ────────────────────────────────────────────
   const calcularBonusComFerias = useCallback((pessoaId: number, anoMes: string) => {
@@ -995,6 +1111,21 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
 
+
+      {/* ── MODAL GUIA ── */}
+      {guiaAberto && (
+        <GuiaModal
+          passo={guiaPasso}
+          setPasso={setGuiaPasso}
+          abaFiltro={guiaAba}
+          onFechar={() => {
+            setGuiaAberto(false);
+            setGuiaPasso(0);
+            localStorage.setItem('daxia_guia_visto', 'true');
+          }}
+        />
+      )}
+
       {/* Toast de feedback — BUG UX */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-xl font-semibold text-white transition-all
@@ -1026,6 +1157,10 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             <button onClick={exportarCSV}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1">
               📊 Exportar CSV
+            </button>
+            <button onClick={() => { setGuiaAberto(true); setGuiaPasso(0); setGuiaAba(null); }}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+              ❓ Guia
             </button>
             <button onClick={onLogout}
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm">
@@ -1061,6 +1196,15 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             </button>
           ))}
         </div>
+
+
+        {/* Botão de ajuda contextual flutuante — aparece em todas as abas */}
+        <button
+          onClick={() => { setGuiaAberto(true); setGuiaPasso(0); setGuiaAba(abaAtiva); }}
+          className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-20 bg-blue-600 hover:bg-blue-700 text-white w-12 h-12 rounded-full shadow-lg font-bold text-xl flex items-center justify-center"
+          title="Ajuda desta aba">
+          ❓
+        </button>
 
         {/* ══ ABA: RESUMOS ══ */}
         {abaAtiva === 'resumos' && (
@@ -1983,6 +2127,7 @@ function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
   // Formulário avaliação
   const [senhaAvaliacao, setSenhaAvaliacao] = useState('');
   const [senhaOk, setSenhaOk] = useState(false);
+  const [setorAvaliacao, setSetorAvaliacao] = useState<string>('');
   const [errSenha, setErrSenha] = useState('');
   const [pessoaSelecionada, setPessoaSelecionada] = useState<number>(0);
   const [dataAvaliacao, setDataAvaliacao] = useState('');
@@ -1995,6 +2140,7 @@ function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
 
   // Resultados
   const [pessoaResultado, setPessoaResultado] = useState<number>(0);
+  const [setorFiltroResultado, setSetorFiltroResultado] = useState<string>('');
 
   // ── Cargos disponíveis ────────────────────────────────────────────────────────
   const cargosUnicos = [...new Set(pessoas.map((p: any) => p.cargo))].sort() as string[];
@@ -2080,6 +2226,13 @@ function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
     if (SENHAS_AVALIACAO.includes(senhaAvaliacao.toUpperCase())) {
       setSenhaOk(true);
       setErrSenha('');
+      // Mapear senha para setor correspondente
+      const mapaSenhaSetor: Record<string,string> = {
+        'INBOUND': 'Inbound',
+        'OUTBOUND': 'Outbound',
+        'PROJETOS': 'Projetos/Estoques/Custos'
+      };
+      setSetorAvaliacao(mapaSenhaSetor[senhaAvaliacao.toUpperCase()] || '');
     } else {
       setErrSenha('❌ Senha incorreta!');
     }
@@ -2225,12 +2378,23 @@ function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
       {/* ── SUB-ABA: RESULTADOS ── */}
       {subAba === 'resultados' && (
         <div className="space-y-4">
-          {/* Seletor de colaborador */}
+          {/* Seletor de setor e colaborador */}
           <div className="bg-white rounded-xl shadow p-5">
             <h2 className="text-lg font-bold text-gray-700 mb-3">📊 Resultado Individual</h2>
+            <div className="flex flex-wrap gap-3 mb-4">
+              {['', 'Inbound', 'Outbound', 'Projetos/Estoques/Custos'].map(setor => (
+                <button key={setor} onClick={() => { setSetorFiltroResultado(setor); setPessoaResultado(0); }}
+                  className={`px-4 py-2 rounded-lg font-bold text-sm transition
+                    ${setorFiltroResultado === setor ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {setor === '' ? '🌐 Todos' : setor === 'Inbound' ? '📥 Inbound' : setor === 'Outbound' ? '📤 Outbound' : '📦 Projetos'}
+                </button>
+              ))}
+            </div>
             <select value={pessoaResultado} onChange={e => setPessoaResultado(+e.target.value)}
               className="w-full md:w-72 border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
-              {pessoas.map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.setor})</option>)}
+              <option value={0}>Selecione um colaborador...</option>
+              {pessoas.filter((p: any) => !setorFiltroResultado || p.setor === setorFiltroResultado)
+                .map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.setor})</option>)}
             </select>
           </div>
 
@@ -2396,7 +2560,7 @@ function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
                   <label className="block text-xs font-semibold text-gray-600 mb-1">👤 Colaborador</label>
                   <select value={pessoaSelecionada} onChange={e => { setPessoaSelecionada(+e.target.value); setNotas({}); }}
                     className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
-                    {pessoas.map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.cargo})</option>)}
+                    {pessoas.filter((p: any) => p.setor === setorAvaliacao).map((p: any) => <option key={p.id} value={p.id}>{p.nome} ({p.cargo})</option>)}
                   </select>
                 </div>
                 <div>
@@ -2568,6 +2732,171 @@ function MatrizCHA({ pessoas, mostrarToast, Avatar }: any) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: GuiaModal
+// ══════════════════════════════════════════════════════════════════════════════
+const PASSOS_GUIA = [
+  {
+    aba: null,
+    titulo: '👋 Bem-vindo ao Daxia People Analytics!',
+    icone: '🏭',
+    descricao: 'Este sistema foi feito para a gestão de RH da operação logística em Guarulhos/SP. Vamos te mostrar como usar cada parte do sistema em poucos passos.',
+    dica: '💡 Este guia aparece automaticamente na primeira vez. Você pode acessá-lo novamente pelo botão ❓ no canto da tela.',
+  },
+  {
+    aba: 'resumos',
+    titulo: '📊 Aba Resumos',
+    icone: '📊',
+    descricao: 'É o painel principal. Aqui você vê os indicadores do período:\n\n• Taxa de absenteísmo e custo total de HE\n• Gráficos de evolução ao longo do tempo\n• Top 10 de quem mais fez HE e quem mais faltou\n• Insights Inteligentes com alertas automáticos',
+    dica: '💡 Use os filtros de data e setor para focar em um time específico ou período.',
+  },
+  {
+    aba: 'dashboard',
+    titulo: '📈 Aba Dashboard',
+    icone: '📈',
+    descricao: 'Visão executiva com os medidores (gauges) de HE e Absenteísmo versus as metas definidas.\n\n• Verde = dentro da meta\n• Amarelo = atenção\n• Vermelho = acima da meta\n\nTambém mostra o status geral do período em cards coloridos.',
+    dica: '💡 As metas são configuráveis na aba ⚙️ Configuração.',
+  },
+  {
+    aba: 'lancamentos',
+    titulo: '📝 Aba Lançamentos',
+    icone: '📝',
+    descricao: 'Aqui você registra todas as ocorrências do dia a dia:\n\n• Horas extras (60% e 100%) — informar em minutos\n• Faltas injustificadas e atestados — valor fixo de 1 dia\n• Atrasos e saídas antecipadas — informar em minutos\n• Advertências — desclassificam o bônus automaticamente\n\nO histórico completo fica na tabela abaixo, incluindo colaboradores inativos.',
+    dica: '💡 Atraso e saída antecipada com aviso comunicado NÃO desclassificam o bônus. Marque o checkbox!',
+  },
+  {
+    aba: 'ferias',
+    titulo: '🏖️ Aba Férias',
+    icone: '🏖️',
+    descricao: 'Registre o período de férias de cada colaborador informando data de início e fim.\n\n• O bônus é calculado proporcionalmente considerando apenas os dias de férias dentro do mês atual\n• O histórico dos últimos 12 meses fica disponível na tabela abaixo\n• Conflitos de férias no mesmo time geram alertas nos Insights',
+    dica: '💡 Férias em outros meses não afetam o bônus do mês atual.',
+  },
+  {
+    aba: 'bonus',
+    titulo: '🎁 Aba Bônus',
+    icone: '🎁',
+    descricao: 'Gestão do bônus mensal de R$ 100 por colaborador:\n\n• Elegíveis: colaboradores sem ocorrências graves no mês\n• Desclassificados: falta injustificada, advertência ou atraso sem aviso\n• O valor total já considera os proporcionais de quem tirou férias\n• Botão "Reset Mensal" volta todos os ativos para elegíveis no início de cada mês',
+    dica: '💡 Colaboradores inativos não aparecem aqui. Inativar um colaborador remove automaticamente a elegibilidade.',
+  },
+  {
+    aba: 'cha',
+    titulo: '🧠 Aba Matriz CHA',
+    icone: '🧠',
+    descricao: 'Avaliação de Conhecimento, Habilidade e Atitude por colaborador:\n\n• Habilidades: cadastradas por cargo (todos do cargo herdam)\n• Avaliar: protegido por senha do time (INBOUND, OUTBOUND ou PROJETOS). Cada senha mostra apenas os colaboradores do setor\n• Notas de 1 a 3 por dimensão — não podem ser alteradas após salvar\n• Resultados: gráfico por colaborador com tendência e histórico\n• Feedback: registro individual com data',
+    dica: '💡 Nota 1 = não possui | Nota 2 = adquiriu | Nota 3 = autonomia total, pode ensinar.',
+  },
+  {
+    aba: 'auditoria',
+    titulo: '🔍 Aba Auditoria',
+    icone: '🔍',
+    descricao: 'Registro automático de todas as alterações feitas no sistema:\n\n• Toda inserção, edição ou exclusão é registrada com usuário e horário\n• Útil para rastrear quem fez o quê e quando\n• O botão "Limpar >30 dias" remove registros antigos (exige senha)',
+    dica: '💡 A auditoria não precisa de manutenção manual — ela registra tudo automaticamente.',
+  },
+  {
+    aba: 'configuracao',
+    titulo: '⚙️ Aba Configuração',
+    icone: '⚙️',
+    descricao: 'Central de cadastros e parâmetros do sistema:\n\n• Metas de HE (R$) e Absenteísmo (%)\n• Horas úteis por dia (usado no cálculo de absenteísmo)\n• Cadastro de cargos com valores de HE 60% e 100%\n• Cadastro de colaboradores com cargo e setor\n• Ativar/inativar colaboradores\n• Cadastro de feriados regionais e pontos facultativos\n• Upload de foto para cada colaborador',
+    dica: '💡 Sempre cadastre os feriados locais de Guarulhos para os Insights funcionarem corretamente.',
+  },
+  {
+    aba: null,
+    titulo: '✅ Pronto! Você já sabe tudo.',
+    icone: '🎉',
+    descricao: 'O sistema está configurado e pronto para uso. Lembre-se:\n\n• Registre os lançamentos diariamente\n• Faça o Reset Mensal do bônus no início de cada mês\n• Consulte os Insights Inteligentes para identificar padrões\n• Use o botão ❓ em qualquer tela para ver a ajuda daquela aba',
+    dica: '💡 Dúvidas? O botão ❓ flutuante no canto inferior direito sempre traz a ajuda da aba que você está.',
+  },
+];
+
+function GuiaModal({ passo, setPasso, abaFiltro, onFechar }: {
+  passo: number;
+  setPasso: (n: number) => void;
+  abaFiltro: string | null;
+  onFechar: () => void;
+}) {
+  const passos = abaFiltro
+    ? PASSOS_GUIA.filter(p => p.aba === abaFiltro)
+    : PASSOS_GUIA;
+
+  const atual = passos[passo] || passos[0];
+  const total = passos.length;
+  const progresso = ((passo + 1) / total) * 100;
+  const ehUltimo = passo === total - 1;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        {/* Barra de progresso */}
+        <div className="h-1.5 bg-gray-200">
+          <div
+            className="h-1.5 bg-blue-600 transition-all duration-500"
+            style={{ width: `${progresso}%` }}
+          />
+        </div>
+
+        {/* Cabeçalho */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold opacity-70 uppercase tracking-wider">
+              {abaFiltro ? 'Ajuda desta aba' : `Passo ${passo + 1} de ${total}`}
+            </span>
+            <button onClick={onFechar}
+              className="text-white/70 hover:text-white text-xl font-bold leading-none">
+              ✕
+            </button>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-5xl">{atual.icone}</div>
+            <h2 className="text-xl font-bold leading-tight">{atual.titulo}</h2>
+          </div>
+        </div>
+
+        {/* Conteúdo */}
+        <div className="p-6">
+          <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line mb-4">
+            {atual.descricao}
+          </p>
+          {atual.dica && (
+            <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-3">
+              <p className="text-blue-800 text-sm">{atual.dica}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Navegação */}
+        <div className="px-6 pb-6 flex items-center justify-between gap-3">
+          <div className="flex gap-1">
+            {passos.map((_, i) => (
+              <button key={i} onClick={() => setPasso(i)}
+                className={`w-2 h-2 rounded-full transition-all ${i === passo ? 'bg-blue-600 w-5' : 'bg-gray-300 hover:bg-gray-400'}`}
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            {passo > 0 && (
+              <button onClick={() => setPasso(passo - 1)}
+                className="px-4 py-2 rounded-lg border-2 border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50">
+                ← Anterior
+              </button>
+            )}
+            {ehUltimo ? (
+              <button onClick={onFechar}
+                className="px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold text-sm">
+                ✅ Concluir
+              </button>
+            ) : (
+              <button onClick={() => setPasso(passo + 1)}
+                className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm">
+                Próximo →
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
