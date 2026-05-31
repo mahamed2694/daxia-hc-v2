@@ -1175,29 +1175,61 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div className="flex items-center gap-3">
-            <svg viewBox="0 0 64 48" width="52" height="40" xmlns="http://www.w3.org/2000/svg">
-              {/* Corpo da empilhadeira */}
-              <rect x="18" y="20" width="28" height="18" rx="2" fill="#2563eb"/>
+            <svg viewBox="0 0 80 60" width="64" height="48" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                  <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15"/>
+                  <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.05"/>
+                </linearGradient>
+              </defs>
+              {/* Base/chão reflexo */}
+              <ellipse cx="42" cy="56" rx="28" ry="3" fill="#38bdf8" opacity="0.15"/>
+              {/* Corpo principal */}
+              <rect x="22" y="26" width="36" height="22" rx="2" fill="url(#bodyGrad)" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
+              {/* Linhas de detalhe corpo */}
+              <line x1="22" y1="34" x2="58" y2="34" stroke="#38bdf8" strokeWidth="0.5" opacity="0.6"/>
+              <line x1="40" y1="26" x2="40" y2="48" stroke="#38bdf8" strokeWidth="0.5" opacity="0.4"/>
               {/* Cabine */}
-              <rect x="32" y="14" width="14" height="12" rx="2" fill="#1d4ed8"/>
-              {/* Vidro cabine */}
-              <rect x="34" y="16" width="10" height="7" rx="1" fill="#93c5fd"/>
-              {/* Mastro */}
-              <rect x="14" y="8" width="4" height="30" rx="1" fill="#1e40af"/>
+              <rect x="38" y="16" width="18" height="16" rx="2" fill="url(#bodyGrad)" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
+              {/* Vidro cabine com brilho */}
+              <rect x="40" y="18" width="14" height="10" rx="1" fill="#38bdf8" opacity="0.18" stroke="#7dd3fc" strokeWidth="0.5"/>
+              <line x1="40" y1="18" x2="54" y2="28" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.5"/>
+              {/* Mastro vertical */}
+              <rect x="16" y="8" width="5" height="38" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
+              <line x1="18" y1="8" x2="18" y2="46" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.7"/>
               {/* Garfo superior */}
-              <rect x="2" y="10" width="16" height="3" rx="1" fill="#1e40af"/>
+              <rect x="2" y="12" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
               {/* Garfo inferior */}
-              <rect x="2" y="16" width="16" height="3" rx="1" fill="#1e40af"/>
-              {/* Carga no garfo */}
-              <rect x="2" y="7" width="10" height="9" rx="1" fill="#fbbf24" opacity="0.9"/>
-              {/* Roda traseira */}
-              <circle cx="40" cy="38" r="5" fill="#1e293b"/>
-              <circle cx="40" cy="38" r="2.5" fill="#64748b"/>
+              <rect x="2" y="20" width="18" height="3" rx="0.5" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
+              {/* Carga holográfica */}
+              <rect x="2" y="8" width="12" height="12" rx="1" fill="#38bdf8" opacity="0.1" stroke="#7dd3fc" strokeWidth="0.8" strokeDasharray="2,1"/>
+              <line x1="2" y1="14" x2="14" y2="14" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
+              <line x1="8" y1="8" x2="8" y2="20" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
               {/* Roda dianteira */}
-              <circle cx="22" cy="38" r="5" fill="#1e293b"/>
-              <circle cx="22" cy="38" r="2.5" fill="#64748b"/>
+              <circle cx="28" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
+              <circle cx="28" cy="48" r="3" fill="none" stroke="#7dd3fc" strokeWidth="0.8"/>
+              <circle cx="28" cy="48" r="1" fill="#38bdf8" opacity="0.8"/>
+              {/* Roda traseira */}
+              <circle cx="50" cy="48" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.2" filter="url(#glow)"/>
+              <circle cx="50" cy="48" r="3" fill="none" stroke="#7dd3fc" strokeWidth="0.8"/>
+              <circle cx="50" cy="48" r="1" fill="#38bdf8" opacity="0.8"/>
               {/* Contrapeso */}
-              <rect x="44" y="24" width="8" height="12" rx="2" fill="#1e40af"/>
+              <rect x="56" y="30" width="8" height="14" rx="1" fill="none" stroke="#38bdf8" strokeWidth="1" filter="url(#glow)"/>
+              <line x1="56" y1="37" x2="64" y2="37" stroke="#7dd3fc" strokeWidth="0.4" opacity="0.6"/>
+              {/* Pontos de luz nos cantos */}
+              <circle cx="22" cy="26" r="1" fill="#38bdf8" opacity="0.9"/>
+              <circle cx="58" cy="26" r="1" fill="#38bdf8" opacity="0.9"/>
+              <circle cx="22" cy="48" r="1" fill="#38bdf8" opacity="0.9"/>
+              <circle cx="58" cy="48" r="1" fill="#38bdf8" opacity="0.9"/>
+              <circle cx="16" cy="8" r="1.2" fill="#7dd3fc" opacity="0.9"/>
+              {/* Linhas de scan animadas */}
+              <line x1="16" y1="28" x2="65" y2="28" stroke="#38bdf8" strokeWidth="0.3" opacity="0.3" strokeDasharray="3,2"/>
+              <line x1="16" y1="38" x2="65" y2="38" stroke="#38bdf8" strokeWidth="0.3" opacity="0.3" strokeDasharray="3,2"/>
+            </svg>
             </svg>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-blue-700">Daxia People Analytics</h1>
@@ -3021,6 +3053,7 @@ function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteis
   const [anoSel, setAnoSel] = useState(hoje.getFullYear());
   const [setorFiltro, setSetorFiltro] = useState('');
   const [diaSelecionado, setDiaSelecionado] = useState<string|null>(null);
+  const [tooltipDia, setTooltipDia] = useState<string|null>(null);
 
   const setores = ['', 'Inbound', 'Outbound', 'Projetos/Estoques/Custos'];
   const nomeMes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -3146,6 +3179,8 @@ function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteis
             return (
               <button key={dia}
                 onClick={() => setDiaSelecionado(selecionado ? null : data)}
+                onMouseEnter={() => !fimSemana && lancs.length > 0 && setTooltipDia(data)}
+                onMouseLeave={() => setTooltipDia(null)}
                 className={`relative rounded-lg p-1 min-h-[52px] text-left transition-all
                   ${corDia(dia)}
                   ${selecionado ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
@@ -3168,8 +3203,43 @@ function CalendarioVisual({ lancamentos, pessoas, feriados, tabelaHE, horasUteis
                     {lancs.length > 3 && <span className="text-gray-400" style={{fontSize:'8px'}}>+{lancs.length-3}</span>}
                   </div>
                 )}
+                {/* Tooltip ao hover */}
+                {tooltipDia === data && lancs.length > 0 && (
+                  <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-gray-900 text-white rounded-xl shadow-2xl p-3 text-xs pointer-events-none"
+                    style={{minWidth:'160px'}}>
+                    <div className="font-bold mb-1.5 text-blue-300 border-b border-gray-700 pb-1">
+                      {dia}/{mesSel+1} — {lancs.length} evento{lancs.length>1?'s':''}
+                    </div>
+                    {lancs.slice(0, 5).map((l: any, idx: number) => {
+                      const p = pessoas.find((x: any) => x.id === l.pessoa_id);
+                      return (
+                        <div key={idx} className="flex items-center gap-1.5 py-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0
+                            ${l.tipo.includes('he') ? 'bg-blue-400' :
+                              l.tipo === 'férias' ? 'bg-green-400' :
+                              l.tipo === 'advertencia' ? 'bg-purple-400' :
+                              'bg-red-400'}`}/>
+                          <span className="truncate text-gray-200">{p?.nome?.split(' ')[0]}</span>
+                          <span className="text-gray-400 flex-shrink-0 ml-auto">
+                            {l.tipo.includes('he') ? 'HE' :
+                              l.tipo === 'férias' ? 'Fér.' :
+                              l.tipo === 'falta-injustificada' ? 'Falta' :
+                              l.tipo === 'atestado' ? 'Ates.' :
+                              l.tipo === 'atraso' ? 'Atr.' :
+                              l.tipo === 'advertencia' ? 'Adv.' :
+                              l.tipo === 'saida-antecipada' ? 'S.Ant.' : l.tipo}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {lancs.length > 5 && (
+                      <div className="text-gray-400 mt-1 pt-1 border-t border-gray-700">+{lancs.length-5} mais — clique para ver</div>
+                    )}
+                    {/* Setinha do tooltip */}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"/>
+                  </div>
+                )}
               </button>
-            );
           })}
         </div>
       </div>
