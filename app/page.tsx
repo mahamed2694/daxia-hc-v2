@@ -773,16 +773,23 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       if (error) throw error;
       setLancamentos(l => [novo, ...l]);
 
-      // Calcular proporcional
-      const anoMes = dIni.slice(0, 7);
-      const [ano, mes] = anoMes.split('-').map(Number);
-      const totalDias = new Date(ano, mes, 0).getDate();
+      // Calcular proporcional — considera apenas dias de férias dentro do mês atual
+      const hoje = new Date();
+      const mesAtual = hoje.getMonth() + 1;
+      const anoAtual = hoje.getFullYear();
+      const totalDias = new Date(anoAtual, mesAtual, 0).getDate();
+      const primeiroDiaMes = new Date(anoAtual, mesAtual - 1, 1);
+      const ultimoDiaMes = new Date(anoAtual, mesAtual - 1, totalDias);
       const inicio = new Date(dIni + 'T00:00:00');
       const fim = new Date(dFim + 'T00:00:00');
-      let diasFerias = 0;
-      for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) diasFerias++;
-      const proporcao = Math.max(0, (totalDias - diasFerias) / totalDias);
-      const valorProp = +(VALOR_BONUS * proporcao).toFixed(2);
+      const inicioEfetivo = inicio > primeiroDiaMes ? inicio : primeiroDiaMes;
+      const fimEfetivo = fim < ultimoDiaMes ? fim : ultimoDiaMes;
+      let diasFeriasNoMes = 0;
+      if (inicioEfetivo <= fimEfetivo) {
+        for (let d = new Date(inicioEfetivo); d <= fimEfetivo; d.setDate(d.getDate() + 1)) diasFeriasNoMes++;
+      }
+      const proporcao = Math.max(0, (totalDias - diasFeriasNoMes) / totalDias);
+      const valorProp = diasFeriasNoMes === 0 ? VALOR_BONUS : +(VALOR_BONUS * proporcao).toFixed(2);
 
       // Persistir valor proporcional no banco — BUG 5
       const bonus = bonusElegibilidade.find(b => b.pessoa_id === pessoaId);
