@@ -78,6 +78,18 @@ function Gauge({ value, max, label }: { value: number; max: number; label: strin
   );
 }
 
+function TelaCarregando() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-5xl mb-4">🏗️</div>
+        <p className="text-2xl font-bold text-blue-600 mb-2">Carregando...</p>
+        <p className="text-gray-500">Conectando ao Supabase</p>
+      </div>
+    </div>
+  );
+}
+
 export default function AppContent({ onLogout }: { onLogout: () => void }) {
   // Dados iniciais de cargos
   const cargosIniciais: Record<string, { he60: number; he100: number }> = {
@@ -1040,15 +1052,8 @@ export default function AppContent({ onLogout }: { onLogout: () => void }) {
 
 
   // ── Loading ───────────────────────────────────────────────────────────────────
-  return !hidratado ? (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-5xl mb-4">🏗️</div>
-        <p className="text-2xl font-bold text-blue-600 mb-2">Carregando...</p>
-        <p className="text-gray-500">Conectando ao Supabase</p>
-      </div>
-    </div>
-  ) : (
+  if (!hidratado) return <TelaCarregando />;
+  return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
 
 
