@@ -1687,8 +1687,17 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         )}
 
       </div>{/* max-w-7xl */}
+    </div>
+  );
 }
 
+function ConfiguracaoTab({
+  pessoasAtivas, pessoasTodas, cargosArray, tabelaHE,
+  formPessoa, setFormPessoa, formCargo, setFormCargo, setoresLista,
+  metaHE, setMetaHE, metaAbsenteismo, setMetaAbsenteismo,
+  horasUteisDia, setHorasUteisDia, bonusElegibilidade,
+  feriados, formFeriado, setFormFeriado,
+  handleAdicionarPessoa, handleDeletarPessoa, handleToggleAtivo,
   handleAdicionarCargo, handleDeletarCargo, handleToggleBonus,
   handleAdicionarFeriado, handleDeletarFeriado, handleUploadFoto,
   Avatar
