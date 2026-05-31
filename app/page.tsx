@@ -322,6 +322,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       if (!existing || existing.length === 0) {
         const { data: novo } = await supabase.from('bonus_elegibilidade').insert([{
           pessoa_id: pessoaId, elegivel: true,
+          valor_bonus: 100,
           data_inicio_elegibilidade: new Date().toISOString().split('T')[0]
         }]).select().single();
         if (novo) setBonusElegibilidade(b => [...b, novo]);
@@ -471,12 +472,18 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     // HE em domingo ou feriado
     const datasHE = [...new Set(lancamentosFiltrados.filter(l=>l.tipo.includes('he')).map(l=>l.data))];
     const feriadosSet = new Set(feriados.map(f=>f.data));
-    const heEmFeriado = datasHE.find(d => {
+    const datasHeEmFeriado = datasHE.filter(d => {
       const diaSem = new Date(d+'T00:00:00').getDay();
       return diaSem === 0 || feriadosSet.has(d);
     });
-    if (heEmFeriado)
-      lista.push({ msg: `🔴 HE registrada em domingo/feriado — são HE 100%! Verifique os lançamentos.`, cor: 'vermelho' });
+    if (datasHeEmFeriado.length > 0) {
+      const totalMinsNessesDias = lancamentosFiltrados
+        .filter(l => l.tipo.includes('he') && datasHeEmFeriado.includes(l.data))
+        .reduce((acc, l) => acc + +(l.minutos||0), 0);
+      const horas = (totalMinsNessesDias/60).toFixed(1);
+      const datas = datasHeEmFeriado.map(d => new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})).join(', ');
+      lista.push({ msg: `🔴 ${horas}h de HE realizadas em domingo/feriado (${datas}) — são HE 100%!`, cor: 'vermelho' });
+    }
 
     // Por setor: absenteísmo
     const absPorSetor: Record<string, number> = {};
