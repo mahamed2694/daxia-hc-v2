@@ -479,7 +479,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     const excedeuLegal = Object.entries(hePorDiaPessoa).find(([,mins])=>mins>180);
     if (excedeuLegal) {
       const [pid, dt] = excedeuLegal[0].split('_');
-      lista.push({ msg: `🚨 ${getNomePessoa(+pid)} fez +3h extra em ${new Date(dt+'T00:00:00').toLocaleDateString('pt-BR')} — vedado por lei!`, cor: 'vermelho' });
+      lista.push({ msg: `🚨 ${pessoas.find((p: any) => p.id === +pid)?.nome || "Desconhecido"} fez +3h extra em ${new Date(dt+'T00:00:00').toLocaleDateString('pt-BR')} — vedado por lei!`, cor: 'vermelho' });
     }
 
     // 5. HE em domingo ou feriado
@@ -549,7 +549,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     const topHEEntry = Object.entries(hePorPessoa).sort(([,a],[,b])=>b-a)[0];
     if (topHEEntry && +topHEEntry[1] > 0) {
       const horas = (+topHEEntry[1]/60).toFixed(1);
-      lista.push({ msg: `👤 ${getNomePessoa(+topHEEntry[0])} é quem mais fez HE no período: ${horas}h`, cor: 'neutro' });
+      lista.push({ msg: `👤 ${pessoas.find((p: any) => p.id === +topHEEntry[0])?.nome || "Desconhecido"} é quem mais fez HE no período: ${horas}h`, cor: 'neutro' });
     }
 
     // 11a. Dia da semana com mais absenteísmo
